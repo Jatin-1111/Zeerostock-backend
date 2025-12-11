@@ -11,6 +11,7 @@ const { testConnection } = require('./config/database');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
+const homepageRoutes = require('./routes/homepage.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -82,6 +83,7 @@ app.get('/', (req, res) => {
         documentation: '/api-docs',
         endpoints: {
             auth: '/api/auth',
+            homepage: '/api/homepage',
             health: '/health'
         },
         security: {
@@ -94,6 +96,7 @@ app.get('/', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/homepage', homepageRoutes);
 
 // 404 handler
 app.use(notFound);
@@ -119,22 +122,35 @@ const startServer = async () => {
             console.log(`🌐 API URL: http://localhost:${PORT}`);
             console.log(`🔐 Security: SOC2, GDPR, SSL Enabled`);
             console.log('\n📚 Available endpoints:');
-            console.log('   - GET  /health');
-            console.log('   - POST /api/auth/signup');
-            console.log('   - POST /api/auth/verify-otp');
-            console.log('   - POST /api/auth/resend-otp');
-            console.log('   - POST /api/auth/login');
-            console.log('   - POST /api/auth/otp-login');
-            console.log('   - POST /api/auth/verify-login-otp');
-            console.log('   - POST /api/auth/social/google');
-            console.log('   - POST /api/auth/refresh-token');
-            console.log('   - POST /api/auth/logout');
-            console.log('   - POST /api/auth/forgot-password');
-            console.log('   - POST /api/auth/reset-password');
-            console.log('   - GET  /api/auth/me');
-            console.log('   - PUT  /api/auth/me');
-            console.log('   - PUT  /api/auth/add-gst');
-            console.log('   - PUT  /api/auth/set-role');
+            console.log('   🔐 Authentication:');
+            console.log('      - POST /api/auth/signup');
+            console.log('      - POST /api/auth/verify-otp');
+            console.log('      - POST /api/auth/resend-otp');
+            console.log('      - POST /api/auth/login');
+            console.log('      - POST /api/auth/otp-login');
+            console.log('      - POST /api/auth/verify-login-otp');
+            console.log('      - POST /api/auth/social/google');
+            console.log('      - POST /api/auth/refresh-token');
+            console.log('      - POST /api/auth/logout');
+            console.log('      - POST /api/auth/forgot-password');
+            console.log('      - POST /api/auth/reset-password');
+            console.log('      - GET  /api/auth/me');
+            console.log('      - PUT  /api/auth/me');
+            console.log('      - PUT  /api/auth/add-gst');
+            console.log('      - PUT  /api/auth/set-role');
+            console.log('\n   🏠 Homepage:');
+            console.log('      - GET  /api/homepage (Combined - All sections)');
+            console.log('      - GET  /api/homepage/hero-banners');
+            console.log('      - GET  /api/homepage/trending-categories');
+            console.log('      - GET  /api/homepage/featured-deals');
+            console.log('      - GET  /api/homepage/live-auctions');
+            console.log('      - GET  /api/homepage/trending-products');
+            console.log('      - GET  /api/homepage/market-insights');
+            console.log('      - GET  /api/homepage/case-studies');
+            console.log('      - GET  /api/homepage/testimonials');
+            console.log('      - GET  /api/homepage/quick-stats');
+            console.log('\n   💚 Health:');
+            console.log('      - GET  /health');
             console.log('\n✅ Server ready to accept requests!\n');
         });
     } catch (error) {

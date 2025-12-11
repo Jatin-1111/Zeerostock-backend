@@ -16,5 +16,8 @@
     "rest-api"
   ],
   "author": "Zeerostock Team",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "pg": "^8.16.3"
+  }
 }
