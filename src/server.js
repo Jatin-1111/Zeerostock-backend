@@ -12,6 +12,7 @@ const { testConnection } = require('./config/database');
 // Import routes
 const authRoutes = require('./routes/auth.routes');
 const homepageRoutes = require('./routes/homepage.routes');
+const marketplaceRoutes = require('./routes/marketplace.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -84,6 +85,7 @@ app.get('/', (req, res) => {
         endpoints: {
             auth: '/api/auth',
             homepage: '/api/homepage',
+            marketplace: '/api/marketplace',
             health: '/health'
         },
         security: {
@@ -97,6 +99,7 @@ app.get('/', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/homepage', homepageRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
 
 // 404 handler
 app.use(notFound);
@@ -149,6 +152,14 @@ const startServer = async () => {
             console.log('      - GET  /api/homepage/case-studies');
             console.log('      - GET  /api/homepage/testimonials');
             console.log('      - GET  /api/homepage/quick-stats');
+            console.log('\n   🛒 Marketplace:');
+            console.log('      - GET  /api/marketplace/products (All products with filters)');
+            console.log('      - GET  /api/marketplace/categories');
+            console.log('      - GET  /api/marketplace/industries');
+            console.log('      - GET  /api/marketplace/featured-deals');
+            console.log('      - GET  /api/marketplace/sponsored');
+            console.log('      - GET  /api/marketplace/trending');
+            console.log('      - GET  /api/marketplace/filters');
             console.log('\n   💚 Health:');
             console.log('      - GET  /health');
             console.log('\n✅ Server ready to accept requests!\n');
