@@ -1,0 +1,20 @@
+{
+  "name": "zeerostock-backend",
+  "version": "1.0.0",
+  "description": "Zeerostock B2B Marketplace - Authentication API",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "b2b",
+    "marketplace",
+    "authentication",
+    "jwt",
+    "rest-api"
+  ],
+  "author": "Zeerostock Team",
+  "license": "ISC"
+}
