@@ -13,6 +13,8 @@ const { testConnection } = require('./config/database');
 const authRoutes = require('./routes/auth.routes');
 const homepageRoutes = require('./routes/homepage.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
+const searchRoutes = require('./routes/search.routes');
+const productDetailRoutes = require('./routes/productDetail.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -86,6 +88,8 @@ app.get('/', (req, res) => {
             auth: '/api/auth',
             homepage: '/api/homepage',
             marketplace: '/api/marketplace',
+            search: '/api/search',
+            products: '/api/products',
             health: '/health'
         },
         security: {
@@ -100,6 +104,8 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/homepage', homepageRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/products', productDetailRoutes);
 
 // 404 handler
 app.use(notFound);
@@ -160,6 +166,26 @@ const startServer = async () => {
             console.log('      - GET  /api/marketplace/sponsored');
             console.log('      - GET  /api/marketplace/trending');
             console.log('      - GET  /api/marketplace/filters');
+            console.log('\n   🔍 Search:');
+            console.log('      - GET  /api/search/suggestions (Auto-suggestions)');
+            console.log('      - GET  /api/search/products (Full-text search with filters)');
+            console.log('      - GET  /api/search/categories (Category search)');
+            console.log('      - GET  /api/search/did-you-mean (Spell correction)');
+            console.log('      - GET  /api/search/popular (Popular searches)');
+            console.log('      - GET  /api/search/recent (Recent searches - Auth required)');
+            console.log('      - POST /api/search/track (Track analytics)');
+            console.log('\n   📦 Product Detail:');
+            console.log('      - GET    /api/products/:id (Main product detail)');
+            console.log('      - GET    /api/products/:id/specifications');
+            console.log('      - GET    /api/products/:id/seller');
+            console.log('      - GET    /api/products/:id/reviews');
+            console.log('      - GET    /api/products/:id/shipping');
+            console.log('      - GET    /api/products/:id/related');
+            console.log('      - POST   /api/products/:id/watch (Auth required)');
+            console.log('      - DELETE /api/products/:id/watch (Auth required)');
+            console.log('      - POST   /api/products/:id/request-quote (Auth required)');
+            console.log('      - POST   /api/products/:id/share');
+            console.log('      - GET    /api/products/:id/auction');
             console.log('\n   💚 Health:');
             console.log('      - GET  /health');
             console.log('\n✅ Server ready to accept requests!\n');
