@@ -15,6 +15,7 @@ const homepageRoutes = require('./routes/homepage.routes');
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const searchRoutes = require('./routes/search.routes');
 const productDetailRoutes = require('./routes/productDetail.routes');
+const cartRoutes = require('./routes/cart.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -90,6 +91,7 @@ app.get('/', (req, res) => {
             marketplace: '/api/marketplace',
             search: '/api/search',
             products: '/api/products',
+            cart: '/api/cart',
             health: '/health'
         },
         security: {
@@ -106,6 +108,7 @@ app.use('/api/homepage', homepageRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/products', productDetailRoutes);
+app.use('/api/cart', cartRoutes);
 
 // 404 handler
 app.use(notFound);
@@ -186,7 +189,20 @@ const startServer = async () => {
             console.log('      - POST   /api/products/:id/request-quote (Auth required)');
             console.log('      - POST   /api/products/:id/share');
             console.log('      - GET    /api/products/:id/auction');
-            console.log('\n   💚 Health:');
+            console.log('\n   � Cart:');
+            console.log('      - POST   /api/cart/add');
+            console.log('      - GET    /api/cart');
+            console.log('      - GET    /api/cart/count');
+            console.log('      - PUT    /api/cart/update/:itemId');
+            console.log('      - DELETE /api/cart/remove/:itemId');
+            console.log('      - DELETE /api/cart/clear');
+            console.log('      - POST   /api/cart/apply-coupon');
+            console.log('      - POST   /api/cart/remove-coupon');
+            console.log('      - GET    /api/cart/validate');
+            console.log('      - GET    /api/cart/shipping-estimate');
+            console.log('      - POST   /api/cart/checkout (Auth required)');
+            console.log('      - POST   /api/cart/merge (Auth required)');
+            console.log('\n   �💚 Health:');
             console.log('      - GET  /health');
             console.log('\n✅ Server ready to accept requests!\n');
         });
