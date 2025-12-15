@@ -248,15 +248,6 @@ const authValidation = {
             })
     }),
 
-    // Google OAuth validation
-    googleAuth: Joi.object({
-        token: Joi.string()
-            .required()
-            .messages({
-                'string.empty': 'Google token is required'
-            })
-    }),
-
     // Verify Login OTP validation
     verifyLoginOTP: Joi.object({
         identifier: Joi.string()

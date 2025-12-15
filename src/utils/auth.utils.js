@@ -196,11 +196,30 @@ const responseUtils = {
 // Sanitization utilities
 const sanitizeUtils = {
     /**
-     * Sanitize user object (remove sensitive data)
+     * Sanitize user object (remove sensitive data and transform to camelCase)
      */
     sanitizeUser(user) {
-        const { password_hash, otp, otp_expires_at, ...sanitized } = user;
-        return sanitized;
+        const { password_hash, otp, otp_expires_at, ...rest } = user;
+
+        // Transform snake_case to camelCase for frontend
+        return {
+            id: rest.id,
+            firstName: rest.first_name,
+            lastName: rest.last_name,
+            email: rest.business_email,
+            mobile: rest.mobile,
+            companyName: rest.company_name,
+            gstNumber: rest.gst_number,
+            role: rest.role,
+            roles: rest.roles || [rest.role], // Ensure roles array exists
+            activeRole: rest.active_role || rest.role,
+            businessType: rest.business_type,
+            isVerified: rest.is_verified,
+            isActive: rest.is_active,
+            lastLogin: rest.last_login,
+            createdAt: rest.created_at,
+            updatedAt: rest.updated_at
+        };
     },
 
     /**

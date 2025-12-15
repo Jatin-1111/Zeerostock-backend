@@ -71,17 +71,14 @@ const signup = asyncHandler(async (req, res) => {
 
     // Store OTP in Redis for faster verification
     await redisHelpers.storeOTP(
-        mobile,
+        businessEmail,
         otp,
         parseInt(process.env.OTP_EXPIRY_MINUTES) || 10
     );
 
-    // Send OTP via email and SMS
+    // Send OTP via email only
     try {
-        await Promise.all([
-            emailService.sendOTP(businessEmail, otp, firstName),
-            smsService.sendOTP(mobile, otp)
-        ]);
+        await emailService.sendOTP(businessEmail, otp, firstName);
     } catch (error) {
         console.error('Failed to send OTP:', error);
         // Don't fail the request if OTP send fails
@@ -89,7 +86,7 @@ const signup = asyncHandler(async (req, res) => {
 
     res.status(201).json({
         success: true,
-        message: 'Registration successful. Please verify your mobile number with the OTP sent.',
+        message: 'Registration successful. Please verify your email with the OTP sent.',
         data: {
             userId: user.id,
             email: user.business_email,
@@ -127,7 +124,7 @@ const verifyOTP = asyncHandler(async (req, res) => {
     }
 
     // Verify OTP from Redis first (faster)
-    const isValidRedisOTP = await redisHelpers.verifyOTP(user.mobile, otp);
+    const isValidRedisOTP = await redisHelpers.verifyOTP(user.business_email, otp);
 
     // If Redis verification fails, check database
     if (!isValidRedisOTP) {
@@ -238,17 +235,14 @@ const resendOTP = asyncHandler(async (req, res) => {
 
     // Store in Redis
     await redisHelpers.storeOTP(
-        user.mobile,
+        user.business_email,
         otp,
         parseInt(process.env.OTP_EXPIRY_MINUTES) || 10
     );
 
-    // Send OTP
+    // Send OTP via email only
     try {
-        await Promise.all([
-            emailService.sendOTP(user.business_email, otp, user.first_name),
-            smsService.sendOTP(user.mobile, otp)
-        ]);
+        await emailService.sendOTP(user.business_email, otp, user.first_name);
     } catch (error) {
         console.error('Failed to send OTP:', error);
         throw new AppError(
@@ -267,95 +261,8 @@ const resendOTP = asyncHandler(async (req, res) => {
     });
 });
 
-/**
- * @route   POST /auth/social/google
- * @desc    Google OAuth authentication
- * @access  Public
- */
-const googleAuth = asyncHandler(async (req, res) => {
-    const { token } = req.validatedBody;
-
-    // Verify Google token
-    const verificationResult = await googleAuthService.verifyToken(token);
-
-    if (!verificationResult.success) {
-        throw new AppError(
-            'Invalid Google token',
-            400,
-            ERROR_CODES.INVALID_GOOGLE_TOKEN
-        );
-    }
-
-    const { googleId, email, firstName, lastName, emailVerified } = verificationResult.data;
-
-    if (!emailVerified) {
-        throw new AppError(
-            'Google email not verified',
-            400,
-            ERROR_CODES.GOOGLE_AUTH_FAILED
-        );
-    }
-
-    // Check if user exists with this Google ID
-    let user = await User.findByProviderId('google', googleId);
-
-    if (!user) {
-        // Check if user exists with this email
-        user = await User.findByEmail(email);
-
-        if (user) {
-            // Link Google account to existing user
-            await User.createSocialAuth(user.id, 'google', googleId);
-        } else {
-            // Create new user
-            const tempPassword = tokenUtils.generate(16);
-            const passwordHash = await passwordUtils.hash(tempPassword);
-
-            user = await User.create({
-                first_name: firstName,
-                last_name: lastName || '',
-                company_name: '', // To be filled by user later
-                business_email: email,
-                mobile: '', // To be filled by user later
-                password_hash: passwordHash,
-                business_type: 'other',
-                role: 'buyer',
-                is_verified: true, // Auto-verify for Google OAuth
-                is_active: true
-            });
-
-            // Create social auth record
-            await User.createSocialAuth(user.id, 'google', googleId);
-        }
-    }
-
-    // Update last login
-    await User.updateLastLogin(user.id);
-
-    // Generate tokens
-    const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, user.role);
-    const refreshToken = jwtUtils.generateRefreshToken(user.id);
-
-    // Store refresh token
-    const refreshTokenExpiry = jwtUtils.getExpiryTime(process.env.JWT_REFRESH_EXPIRY || '7d');
-    await RefreshToken.create(user.id, refreshToken, refreshTokenExpiry.toISOString());
-    await redisHelpers.storeRefreshToken(user.id, refreshToken, 7 * 24 * 60 * 60);
-
-    res.json({
-        success: true,
-        message: 'Google authentication successful',
-        data: {
-            user: sanitizeUtils.sanitizeUser(user),
-            accessToken,
-            refreshToken,
-            isNewUser: !user.company_name || !user.mobile
-        }
-    });
-});
-
 module.exports = {
     signup,
     verifyOTP,
-    resendOTP,
-    googleAuth
+    resendOTP
 };

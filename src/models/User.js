@@ -236,6 +236,277 @@ const User = {
 
         if (error) throw error;
         return data;
+    },
+
+    // ============================================
+    // MULTI-ROLE METHODS
+    // ============================================
+
+    /**
+     * Check if user can access supplier role
+     */
+    async canAccessSupplierRole(userId) {
+        const { data, error } = await supabase
+            .from('users')
+            .select(`
+                roles,
+                supplier_profiles:supplier_profiles(verification_status)
+            `)
+            .eq('id', userId)
+            .single();
+
+        if (error || !data) {
+            return {
+                hasRole: false,
+                isVerified: false,
+                status: null
+            };
+        }
+
+        const hasSupplierRole = data.roles && data.roles.includes('supplier');
+        const supplierProfile = data.supplier_profiles?.[0];
+        const status = supplierProfile?.verification_status || null;
+        const isVerified = status === 'verified';
+
+        return {
+            hasRole: hasSupplierRole,
+            isVerified: isVerified,
+            status: status
+        };
+    },
+
+    /**
+     * Add role to user
+     */
+    async addRole(userId, role) {
+        // Get current user to check existing roles
+        const user = await this.findById(userId);
+        if (!user) throw new Error('User not found');
+
+        // Admin role is exclusive - cannot be combined with buyer/supplier
+        if (role === 'admin' && user.roles && user.roles.length > 0) {
+            throw new Error('Admin role must be exclusive. Remove other roles first.');
+        }
+
+        // Cannot add buyer/supplier to admin
+        if (user.roles && user.roles.includes('admin') && (role === 'buyer' || role === 'supplier')) {
+            throw new Error('Admin users cannot have buyer or supplier roles.');
+        }
+
+        // For supplier role, check verification first
+        if (role === 'supplier') {
+            const access = await this.canAccessSupplierRole(userId);
+            if (!access.isVerified) {
+                throw new Error('Supplier role requires admin verification');
+            }
+        }
+
+        // Check if role already exists
+        if (user.roles && user.roles.includes(role)) {
+            return user;
+        }
+
+        // Add role to array
+        const newRoles = [...(user.roles || []), role];
+
+        const { data, error } = await supabase
+            .from('users')
+            .update({
+                roles: newRoles,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
+     * Remove role from user
+     */
+    async removeRole(userId, role) {
+        const user = await this.findById(userId);
+        if (!user) throw new Error('User not found');
+
+        // Must have at least one role
+        if (!user.roles || user.roles.length <= 1) {
+            throw new Error('User must have at least one role');
+        }
+
+        // Remove role from array
+        const newRoles = user.roles.filter(r => r !== role);
+
+        const { data, error } = await supabase
+            .from('users')
+            .update({
+                roles: newRoles,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
+     * Switch active role
+     */
+    async switchActiveRole(userId, newRole) {
+        const user = await this.findById(userId);
+        if (!user) throw new Error('User not found');
+
+        // Admin cannot switch roles
+        if (user.roles && user.roles.includes('admin')) {
+            throw new Error('Admin users cannot switch to other roles');
+        }
+
+        // If switching to supplier, verify they have verified access
+        if (newRole === 'supplier') {
+            const access = await this.canAccessSupplierRole(userId);
+            if (!access.isVerified) {
+                throw new Error('Your supplier account is not yet verified. Please wait for admin approval.');
+            }
+        }
+
+        // Check if role exists
+        if (!user.roles || !user.roles.includes(newRole)) {
+            throw new Error('User does not have this role');
+        }
+
+        const { data, error } = await supabase
+            .from('users')
+            .update({
+                active_role: newRole,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
+     * Check if user has specific role
+     */
+    async hasRole(userId, role) {
+        const user = await this.findById(userId);
+        return user && user.roles && user.roles.includes(role);
+    },
+
+    /**
+     * Get user with role-specific profiles
+     */
+    async getUserWithProfiles(userId) {
+        const { data, error } = await supabase
+            .from('users')
+            .select(`
+                *,
+                buyer_profiles(*),
+                supplier_profiles(*)
+            `)
+            .eq('id', userId)
+            .single();
+
+        if (error) throw error;
+
+        // Format the response
+        return {
+            ...data,
+            buyer_profile: data.buyer_profiles?.[0] || null,
+            supplier_profile: data.supplier_profiles?.[0] || null,
+            buyer_profiles: undefined,
+            supplier_profiles: undefined
+        };
+    },
+
+    /**
+     * Create or update buyer profile
+     */
+    async createBuyerProfile(userId, profileData) {
+        const { data, error } = await supabase
+            .from('buyer_profiles')
+            .upsert({
+                user_id: userId,
+                company_name: profileData.company_name,
+                industry: profileData.industry,
+                preferred_categories: profileData.preferred_categories,
+                budget_range: profileData.budget_range,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id'
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
+     * Create or update supplier profile
+     */
+    async createSupplierProfile(userId, profileData) {
+        const { data, error } = await supabase
+            .from('supplier_profiles')
+            .upsert({
+                user_id: userId,
+                business_name: profileData.business_name,
+                business_type: profileData.business_type,
+                gst_number: profileData.gst_number,
+                pan_number: profileData.pan_number,
+                warehouse_locations: profileData.warehouse_locations,
+                product_categories: profileData.product_categories,
+                business_address: profileData.business_address,
+                business_email: profileData.business_email,
+                business_phone: profileData.business_phone,
+                gst_certificate_url: profileData.gst_certificate_url,
+                pan_card_url: profileData.pan_card_url,
+                business_license_url: profileData.business_license_url,
+                address_proof_url: profileData.address_proof_url,
+                verification_status: 'pending',
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id'
+            })
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
+     * Get buyer profile by user ID
+     */
+    async getBuyerProfile(userId) {
+        const { data, error } = await supabase
+            .from('buyer_profiles')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
+
+        if (error && error.code !== 'PGRST116') return null;
+        return data;
+    },
+
+    /**
+     * Get supplier profile by user ID
+     */
+    async getSupplierProfile(userId) {
+        const { data, error } = await supabase
+            .from('supplier_profiles')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
+
+        if (error && error.code !== 'PGRST116') return null;
+        return data;
     }
 };
 

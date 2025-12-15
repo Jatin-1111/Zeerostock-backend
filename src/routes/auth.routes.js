@@ -62,20 +62,6 @@ router.post(
 
 /**
  * @swagger
- * /auth/social/google:
- *   post:
- *     summary: Google OAuth authentication
- *     tags: [Authentication]
- *     description: Authenticate user with Google OAuth
- */
-router.post(
-    '/social/google',
-    validate(authValidation.googleAuth),
-    signupController.googleAuth
-);
-
-/**
- * @swagger
  * /auth/login:
  *   post:
  *     summary: Login with email/phone and password
