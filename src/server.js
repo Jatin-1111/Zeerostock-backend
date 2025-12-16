@@ -16,6 +16,7 @@ const marketplaceRoutes = require('./routes/marketplace.routes');
 const searchRoutes = require('./routes/search.routes');
 const productDetailRoutes = require('./routes/productDetail.routes');
 const cartRoutes = require('./routes/cart.routes');
+const buyerRoutes = require('./routes/buyer.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -92,6 +93,7 @@ app.get('/', (req, res) => {
             search: '/api/search',
             products: '/api/products',
             cart: '/api/cart',
+            buyer: '/api/buyer',
             health: '/health'
         },
         security: {
@@ -109,6 +111,7 @@ app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/products', productDetailRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/buyer', buyerRoutes);
 
 // 404 handler
 app.use(notFound);
