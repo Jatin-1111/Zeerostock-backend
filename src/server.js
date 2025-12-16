@@ -17,6 +17,8 @@ const searchRoutes = require('./routes/search.routes');
 const productDetailRoutes = require('./routes/productDetail.routes');
 const cartRoutes = require('./routes/cart.routes');
 const buyerRoutes = require('./routes/buyer.routes');
+const roleRoutes = require('./routes/role.routes');
+const adminRoutes = require('./routes/admin.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -88,6 +90,8 @@ app.get('/', (req, res) => {
         documentation: '/api-docs',
         endpoints: {
             auth: '/api/auth',
+            roles: '/api/roles',
+            admin: '/api/admin',
             homepage: '/api/homepage',
             marketplace: '/api/marketplace',
             search: '/api/search',
@@ -106,6 +110,8 @@ app.get('/', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/homepage', homepageRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/search', searchRoutes);
@@ -153,6 +159,21 @@ const startServer = async () => {
             console.log('      - PUT  /api/auth/me');
             console.log('      - PUT  /api/auth/add-gst');
             console.log('      - PUT  /api/auth/set-role');
+            console.log('\n   👥 Roles & Profiles:');
+            console.log('      - GET  /api/roles (Get user roles)');
+            console.log('      - POST /api/roles/switch-role');
+            console.log('      - POST /api/roles/request-supplier-role');
+            console.log('      - GET  /api/roles/supplier-verification-status');
+            console.log('      - PUT  /api/roles/buyer-profile');
+            console.log('      - PUT  /api/roles/supplier-profile');
+            console.log('\n   🛡️ Admin (Supplier Verification):');
+            console.log('      - GET  /api/admin/supplier-verifications');
+            console.log('      - GET  /api/admin/supplier-verifications/stats');
+            console.log('      - GET  /api/admin/supplier-verifications/all');
+            console.log('      - GET  /api/admin/supplier-verifications/:id');
+            console.log('      - POST /api/admin/supplier-verifications/:id/approve');
+            console.log('      - POST /api/admin/supplier-verifications/:id/reject');
+            console.log('      - POST /api/admin/supplier-verifications/:id/review');
             console.log('\n   🏠 Homepage:');
             console.log('      - GET  /api/homepage (Combined - All sections)');
             console.log('      - GET  /api/homepage/hero-banners');
