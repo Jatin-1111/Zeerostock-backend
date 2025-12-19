@@ -2,6 +2,8 @@ const { createClient } = require('@supabase/supabase-js');
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 // Supabase Client for PostgreSQL
 const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -14,18 +16,35 @@ const supabase = createClient(
     }
 );
 
+// Validate DATABASE_URL
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+    throw new Error('DATABASE_URL environment variable is not set');
+}
+
+// Ensure connection string uses pooler parameters in production
+let connectionString = databaseUrl;
+if (isProduction && !connectionString.includes('pgbouncer=true')) {
+    // Add pgbouncer parameter if not present
+    const separator = connectionString.includes('?') ? '&' : '?';
+    connectionString += `${separator}pgbouncer=true&connection_limit=1`;
+    console.log('✓ Added pgbouncer parameters to connection string');
+}
+
 // Sequelize instance for RFQ/Quote models
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
+const sequelize = new Sequelize(connectionString, {
     dialect: 'postgres',
-    logging: false, // Set to console.log to see SQL queries
+    logging: !isProduction ? console.log : false, // Enable logging in development
     dialectOptions: {
-        ssl: {
+        ssl: isProduction ? {
             require: true,
             rejectUnauthorized: false
-        }
+        } : false,
+        // Force IPv4 to avoid IPv6 connection issues on Render
+        family: 4
     },
     pool: {
-        max: 5,
+        max: isProduction ? 5 : 10,
         min: 0,
         acquire: 30000,
         idle: 10000
