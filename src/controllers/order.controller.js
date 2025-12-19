@@ -1,6 +1,11 @@
 const Order = require('../models/Order');
 const OrderItem = require('../models/OrderItem');
 const NotificationService = require('../services/notification.service');
+const OrderService = require('../services/order.service');
+const PDFDocument = require('pdfkit');
+const xlsx = require('xlsx');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Order Controllers
@@ -317,11 +322,453 @@ const getOrderStats = async (req, res) => {
     }
 };
 
+/**
+ * POST /api/buyer/orders/create
+ * Create a new order from checkout session
+ */
+const createOrder = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const {
+            checkoutSessionId,
+            shippingAddressId,
+            billingAddressId,
+            paymentMethod,
+            paymentDetails,
+            orderNotes
+        } = req.body;
+
+        // Build order data, excluding undefined values
+        const orderData = {
+            userId,
+            checkoutSessionId,
+            shippingAddressId,
+            paymentMethod,
+        };
+
+        // Add optional fields only if they exist
+        if (billingAddressId) {
+            orderData.billingAddressId = billingAddressId;
+        }
+        if (paymentDetails) {
+            orderData.paymentDetails = paymentDetails;
+        }
+        if (orderNotes) {
+            orderData.orderNotes = orderNotes;
+        }
+
+        // Create order using OrderService
+        const order = await OrderService.createOrder(orderData);
+
+        res.status(201).json({
+            success: true,
+            message: 'Order created successfully',
+            data: order
+        });
+
+    } catch (error) {
+        console.error('Error creating order:', error);
+
+        // Handle specific errors
+        const errorMessages = {
+            'INVALID_CHECKOUT_SESSION': 'Invalid or expired checkout session. Please try checkout again.',
+            'CHECKOUT_SESSION_EXPIRED': 'Your checkout session has expired. Please return to cart and checkout again.',
+            'CHECKOUT_SESSION_ALREADY_USED': 'This checkout session has already been used to place an order.',
+            'CART_IS_EMPTY': 'Your cart is empty. Cannot create order.',
+            'CART_MODIFIED_AFTER_CHECKOUT: Items changed': 'Cart items have changed since checkout. Please review your cart and checkout again.',
+            'CART_MODIFIED_AFTER_CHECKOUT: Quantities changed': 'Item quantities have changed since checkout. Please review your cart and checkout again.',
+            'CART_MODIFIED_AFTER_CHECKOUT': 'Your cart has been modified. Please return to cart and checkout again.',
+            'INVALID_SHIPPING_ADDRESS': 'The selected shipping address is invalid or has been deleted.',
+            'INVALID_BILLING_ADDRESS': 'The selected billing address is invalid or has been deleted.',
+            'PRODUCT_NOT_FOUND': 'One or more products in your cart are no longer available.',
+            'PRODUCT_NOT_AVAILABLE': 'One or more products in your cart are currently unavailable.',
+            'INSUFFICIENT_STOCK': 'Insufficient stock for one or more products. Please update quantities.',
+            'PRODUCT_EXPIRED': 'One or more products in your cart have expired and are no longer available.'
+        };
+
+        const errorCode = error.message.split(':')[0];
+        const message = errorMessages[errorCode] || error.message || 'Failed to create order';
+        const statusCode = ['INVALID_SHIPPING_ADDRESS', 'INVALID_BILLING_ADDRESS', 'CART_MODIFIED_AFTER_CHECKOUT'].includes(errorCode) ? 400 :
+            ['PRODUCT_NOT_FOUND'].includes(errorCode) ? 404 : 500;
+
+        res.status(statusCode).json({
+            success: false,
+            errorCode: errorCode || 'ORDER_CREATION_FAILED',
+            message,
+            details: error.message
+        });
+    }
+};
+
+/**
+ * GET /api/buyer/orders/:orderId/invoice
+ * Download PDF invoice for an order
+ */
+const downloadInvoice = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { orderId } = req.params;
+
+        // Get order details
+        const order = await Order.getOrderWithTracking(orderId, userId);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                errorCode: 'ORDER_NOT_FOUND',
+                message: 'Order not found'
+            });
+        }
+
+        // Only generate invoice for confirmed/completed orders
+        if (!['confirmed', 'processing', 'shipped', 'delivered'].includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                errorCode: 'INVOICE_NOT_AVAILABLE',
+                message: 'Invoice is only available for confirmed orders'
+            });
+        }
+
+        // Create PDF document
+        const doc = new PDFDocument({ margin: 50 });
+
+        // Set response headers
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=invoice-${order.orderNumber}.pdf`);
+
+        // Pipe PDF to response
+        doc.pipe(res);
+
+        // Generate invoice content
+        generateInvoiceHeader(doc, order);
+        generateInvoiceBody(doc, order);
+        generateInvoiceFooter(doc, order);
+
+        // Finalize PDF
+        doc.end();
+
+    } catch (error) {
+        console.error('Error generating invoice:', error);
+
+        // If headers not sent, send error response
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                errorCode: 'INVOICE_GENERATION_FAILED',
+                message: 'Failed to generate invoice'
+            });
+        }
+    }
+};
+
+// Helper function to generate invoice header
+function generateInvoiceHeader(doc, order) {
+    doc
+        .fontSize(20)
+        .text('INVOICE', 50, 50, { align: 'right' })
+        .fontSize(10)
+        .text(`Invoice #: ${order.invoiceNumber || order.orderNumber}`, 50, 80, { align: 'right' })
+        .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 50, 95, { align: 'right' })
+        .text(`Order #: ${order.orderNumber}`, 50, 110, { align: 'right' })
+        .moveDown();
+
+    // Company details (left side)
+    doc
+        .fontSize(14)
+        .text('Zeerostock', 50, 50)
+        .fontSize(10)
+        .text('B2B Marketplace', 50, 70)
+        .text('India', 50, 85)
+        .moveDown();
+
+    // Customer details
+    doc
+        .fontSize(12)
+        .text('Bill To:', 50, 150)
+        .fontSize(10)
+        .text(order.billingAddress.name, 50, 170)
+        .text(order.billingAddress.addressLine1, 50, 185)
+        .text(`${order.billingAddress.city}, ${order.billingAddress.state} ${order.billingAddress.pincode}`, 50, 200)
+        .text(`Phone: ${order.billingAddress.phone}`, 50, 215);
+
+    // Shipping address (if different)
+    if (order.shippingAddress.addressLine1 !== order.billingAddress.addressLine1) {
+        doc
+            .fontSize(12)
+            .text('Ship To:', 300, 150)
+            .fontSize(10)
+            .text(order.shippingAddress.name, 300, 170)
+            .text(order.shippingAddress.addressLine1, 300, 185)
+            .text(`${order.shippingAddress.city}, ${order.shippingAddress.state} ${order.shippingAddress.pincode}`, 300, 200)
+            .text(`Phone: ${order.shippingAddress.phone}`, 300, 215);
+    }
+
+    doc.moveDown(2);
+}
+
+// Helper function to generate invoice body with items table
+function generateInvoiceBody(doc, order) {
+    const tableTop = 260;
+    const itemCodeX = 50;
+    const descriptionX = 120;
+    const quantityX = 300;
+    const priceX = 370;
+    const amountX = 450;
+
+    // Table header
+    doc
+        .fontSize(10)
+        .text('Item', itemCodeX, tableTop, { bold: true })
+        .text('Description', descriptionX, tableTop)
+        .text('Qty', quantityX, tableTop)
+        .text('Price', priceX, tableTop)
+        .text('Amount', amountX, tableTop);
+
+    // Draw line under header
+    doc
+        .moveTo(50, tableTop + 15)
+        .lineTo(550, tableTop + 15)
+        .stroke();
+
+    // Table rows
+    let yPosition = tableTop + 25;
+
+    order.items.forEach((item, i) => {
+        const itemTotal = item.finalPrice * item.quantity;
+
+        doc
+            .fontSize(9)
+            .text(item.productSku || `#${i + 1}`, itemCodeX, yPosition, { width: 60 })
+            .text(item.productTitle, descriptionX, yPosition, { width: 170 })
+            .text(item.quantity.toString(), quantityX, yPosition, { width: 50 })
+            .text(`₹${item.finalPrice.toFixed(2)}`, priceX, yPosition, { width: 70 })
+            .text(`₹${itemTotal.toFixed(2)}`, amountX, yPosition, { width: 90, align: 'right' });
+
+        yPosition += 25;
+    });
+
+    // Draw line before totals
+    doc
+        .moveTo(50, yPosition)
+        .lineTo(550, yPosition)
+        .stroke();
+
+    yPosition += 15;
+
+    // Totals section
+    const totalsX = 370;
+    const totalsValueX = 450;
+
+    doc
+        .fontSize(10)
+        .text('Subtotal:', totalsX, yPosition)
+        .text(`₹${order.pricing.itemsSubtotal.toFixed(2)}`, totalsValueX, yPosition, { align: 'right' });
+
+    yPosition += 20;
+
+    if (order.pricing.discountAmount > 0) {
+        doc
+            .text('Discount:', totalsX, yPosition)
+            .text(`-₹${order.pricing.discountAmount.toFixed(2)}`, totalsValueX, yPosition, { align: 'right' });
+        yPosition += 20;
+    }
+
+    if (order.pricing.couponDiscount > 0) {
+        doc
+            .text(`Coupon (${order.pricing.couponCode}):`, totalsX, yPosition)
+            .text(`-₹${order.pricing.couponDiscount.toFixed(2)}`, totalsValueX, yPosition, { align: 'right' });
+        yPosition += 20;
+    }
+
+    doc
+        .text('GST:', totalsX, yPosition)
+        .text(`₹${order.pricing.gstAmount.toFixed(2)}`, totalsValueX, yPosition, { align: 'right' });
+
+    yPosition += 20;
+
+    if (order.pricing.shippingCharges > 0) {
+        doc
+            .text('Shipping:', totalsX, yPosition)
+            .text(`₹${order.pricing.shippingCharges.toFixed(2)}`, totalsValueX, yPosition, { align: 'right' });
+        yPosition += 20;
+    }
+
+    if (order.pricing.platformFee > 0) {
+        doc
+            .text('Platform Fee:', totalsX, yPosition)
+            .text(`₹${order.pricing.platformFee.toFixed(2)}`, totalsValueX, yPosition, { align: 'right' });
+        yPosition += 20;
+    }
+
+    // Draw line before grand total
+    doc
+        .moveTo(370, yPosition)
+        .lineTo(550, yPosition)
+        .stroke();
+
+    yPosition += 10;
+
+    // Grand total
+    doc
+        .fontSize(12)
+        .text('Total:', totalsX, yPosition, { bold: true })
+        .text(`₹${order.pricing.totalAmount.toFixed(2)}`, totalsValueX, yPosition, { align: 'right', bold: true });
+
+    yPosition += 30;
+
+    // Payment info
+    doc
+        .fontSize(10)
+        .text(`Payment Method: ${order.paymentMethod.toUpperCase()}`, 50, yPosition)
+        .text(`Payment Status: ${order.paymentStatus.toUpperCase()}`, 50, yPosition + 15);
+
+    if (order.paymentTransactionId) {
+        doc.text(`Transaction ID: ${order.paymentTransactionId}`, 50, yPosition + 30);
+    }
+}
+
+// Helper function to generate invoice footer
+function generateInvoiceFooter(doc, order) {
+    const footerTop = 700;
+
+    doc
+        .fontSize(8)
+        .text('Thank you for your business!', 50, footerTop, { align: 'center' })
+        .text('For any queries, contact us at support@zeerostock.com', 50, footerTop + 15, { align: 'center' })
+        .text('This is a computer-generated invoice and does not require a signature', 50, footerTop + 30, { align: 'center' });
+}
+
+/**
+ * GET /api/buyer/orders/export
+ * Export orders to Excel file
+ */
+const exportOrders = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { status, startDate, endDate, format = 'xlsx' } = req.query;
+
+        // Build query filters
+        const filters = { status };
+        if (startDate) filters.startDate = startDate;
+        if (endDate) filters.endDate = endDate;
+
+        // Get all orders (without pagination) for export
+        const result = await Order.getOrderHistory(userId, {
+            page: 1,
+            limit: 10000, // Large limit to get all orders
+            ...filters
+        });
+
+        if (!result.orders || result.orders.length === 0) {
+            return res.status(404).json({
+                success: false,
+                errorCode: 'NO_ORDERS_TO_EXPORT',
+                message: 'No orders found to export'
+            });
+        }
+
+        // Prepare data for export
+        const exportData = result.orders.map(order => ({
+            'Order Number': order.orderNumber,
+            'Order Date': new Date(order.createdAt).toLocaleDateString(),
+            'Status': order.status.toUpperCase(),
+            'Payment Status': order.paymentStatus.toUpperCase(),
+            'Payment Method': order.paymentMethod.toUpperCase(),
+            'Items Count': order.itemCount,
+            'Subtotal': `₹${order.itemsSubtotal.toFixed(2)}`,
+            'Discount': `₹${(order.discountAmount + order.couponDiscount).toFixed(2)}`,
+            'GST': `₹${order.gstAmount.toFixed(2)}`,
+            'Shipping': `₹${order.shippingCharges.toFixed(2)}`,
+            'Total Amount': `₹${order.totalAmount.toFixed(2)}`,
+            'Shipping Address': `${order.shippingAddress.city}, ${order.shippingAddress.state}`,
+            'Tracking Number': order.trackingNumber || 'N/A',
+            'Delivery ETA': order.deliveryEta ? new Date(order.deliveryEta).toLocaleDateString() : 'N/A'
+        }));
+
+        if (format === 'csv') {
+            // Generate CSV
+            const csv = convertToCSV(exportData);
+
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename=orders-export-${Date.now()}.csv`);
+            res.send(csv);
+        } else {
+            // Generate Excel file
+            const workbook = xlsx.utils.book_new();
+            const worksheet = xlsx.utils.json_to_sheet(exportData);
+
+            // Set column widths
+            worksheet['!cols'] = [
+                { wch: 15 }, // Order Number
+                { wch: 12 }, // Order Date
+                { wch: 12 }, // Status
+                { wch: 15 }, // Payment Status
+                { wch: 15 }, // Payment Method
+                { wch: 12 }, // Items Count
+                { wch: 12 }, // Subtotal
+                { wch: 12 }, // Discount
+                { wch: 12 }, // GST
+                { wch: 12 }, // Shipping
+                { wch: 15 }, // Total Amount
+                { wch: 25 }, // Shipping Address
+                { wch: 20 }, // Tracking Number
+                { wch: 15 }  // Delivery ETA
+            ];
+
+            xlsx.utils.book_append_sheet(workbook, worksheet, 'Orders');
+
+            // Generate buffer
+            const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename=orders-export-${Date.now()}.xlsx`);
+            res.send(buffer);
+        }
+
+    } catch (error) {
+        console.error('Error exporting orders:', error);
+
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                errorCode: 'EXPORT_FAILED',
+                message: 'Failed to export orders'
+            });
+        }
+    }
+};
+
+// Helper function to convert JSON to CSV
+function convertToCSV(data) {
+    if (data.length === 0) return '';
+
+    const headers = Object.keys(data[0]);
+    const csvRows = [];
+
+    // Add header row
+    csvRows.push(headers.join(','));
+
+    // Add data rows
+    for (const row of data) {
+        const values = headers.map(header => {
+            const value = row[header];
+            // Escape commas and quotes
+            return `"${String(value).replace(/"/g, '""')}"`;
+        });
+        csvRows.push(values.join(','));
+    }
+
+    return csvRows.join('\n');
+}
+
 module.exports = {
     getActiveOrders,
     getOrderHistory,
     getOrderById,
     getOrderTracking,
     cancelOrder,
-    getOrderStats
+    getOrderStats,
+    createOrder,
+    downloadInvoice,
+    exportOrders
 };

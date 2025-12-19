@@ -5,11 +5,10 @@ const Joi = require('joi');
  * Joi validation schemas for product detail endpoints
  */
 
-// Product ID parameter validator
+// Product ID parameter validator (accepts UUID or slug)
 const productIdSchema = Joi.object({
-  id: Joi.string().uuid().required()
+  id: Joi.string().required()
     .messages({
-      'string.guid': 'Invalid product ID format',
       'any.required': 'Product ID is required'
     })
 });

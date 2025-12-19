@@ -6,52 +6,65 @@ const { supabase } = require('../config/database');
  */
 class ProductDetail {
   /**
-   * Get complete product details by ID
-   * @param {string} productId - Product UUID
+   * Get complete product details by ID or slug
+   * @param {string} identifier - Product UUID or slug
    * @param {string} userId - Current user ID (optional, for watchlist status)
    * @returns {Promise<Object>} - Complete product details
    */
-  static async getFullDetails(productId, userId = null) {
+  static async getFullDetails(identifier, userId = null) {
     try {
+      // Determine if identifier is UUID or slug
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+
       // Get main product data
-      const { data: product, error } = await supabase
+      let query = supabase
         .from('products')
         .select(`
           *,
           category:categories(id, name, slug, image_url)
-        `)
-        .eq('id', productId)
-        .single();
+        `);
+
+      // Query by UUID or slug
+      if (isUUID) {
+        query = query.eq('id', identifier);
+      } else {
+        query = query.eq('slug', identifier);
+      }
+
+      const { data: product, error } = await query.single();
 
       if (error) throw error;
       if (!product) return null;
 
-      // Get specifications
-      const specs = await this.getSpecifications(productId);
+      // Get specifications (using product.id for subsequent queries)
+      const specs = await this.getSpecifications(product.id);
 
       // Get seller info
       const seller = await this.getSellerInfo(product.supplier_id);
 
       // Get review stats
-      const reviewStats = await this.getReviewStats(productId);
+      const reviewStats = await this.getReviewStats(product.id);
 
       // Get auction details if applicable
       let auction = null;
       if (product.listing_type === 'auction') {
-        auction = await this.getAuctionDetails(productId);
+        auction = await this.getAuctionDetails(product.id);
       }
 
       // Check if user is watching
       let isWatching = false;
       if (userId) {
-        isWatching = await this.isWatching(productId, userId);
+        isWatching = await this.isWatching(product.id, userId);
       }
 
       // Track view
-      await this.incrementViews(productId);
+      await this.incrementViews(product.id);
+
+      // Transform product data to match frontend expectations
+      const transformedProduct = this.transformProductData(product);
 
       return {
-        product,
+        product: transformedProduct,
         specifications: specs,
         seller,
         reviewStats,
@@ -518,6 +531,45 @@ class ProductDetail {
     if (days > 0) return `${days}d ${hours}h`;
     if (hours > 0) return `${hours}h`;
     return `< 1h`;
+  }
+
+  /**
+   * Transform product data to match frontend expectations
+   * Maps database field names to frontend field names for consistency
+   * @param {Object} product - Raw product from database
+   * @returns {Object} - Transformed product
+   */
+  static transformProductData(product) {
+    if (!product) return null;
+
+    // Parse gallery images if it's a string
+    let galleryImages = [];
+    if (product.gallery_images) {
+      try {
+        galleryImages = typeof product.gallery_images === 'string'
+          ? JSON.parse(product.gallery_images)
+          : product.gallery_images;
+      } catch (e) {
+        console.error('Error parsing gallery images:', e);
+        galleryImages = [];
+      }
+    }
+
+    return {
+      ...product,
+      // Map database fields to frontend expected fields
+      price: product.price_after,
+      original_price: product.price_before,
+      originalPrice: product.price_before,
+      discountPercent: product.discount_percent,
+      stock_quantity: product.quantity,
+      stockQuantity: product.quantity,
+      minimum_order_quantity: product.min_order_quantity || 1,
+      minimumOrderQuantity: product.min_order_quantity || 1,
+      // Image fields
+      image: product.image_url,
+      images: [product.image_url, ...galleryImages].filter(img => img && img.trim() !== ''),
+    };
   }
 
   /**

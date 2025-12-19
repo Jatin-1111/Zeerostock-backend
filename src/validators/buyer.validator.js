@@ -32,6 +32,32 @@ const buyerValidation = {
         })
     }),
 
+    createOrder: Joi.object({
+        checkoutSessionId: Joi.string().uuid().required().messages({
+            'string.guid': 'Invalid checkout session ID format',
+            'string.empty': 'Checkout session ID is required'
+        }),
+        shippingAddressId: Joi.string().uuid().required().messages({
+            'string.guid': 'Invalid shipping address ID format',
+            'string.empty': 'Shipping address is required'
+        }),
+        billingAddressId: Joi.string().uuid().optional().allow('', null).messages({
+            'string.guid': 'Invalid billing address ID format'
+        }),
+        paymentMethod: Joi.string().valid('cod', 'online', 'upi').required().messages({
+            'any.only': 'Payment method must be one of: cod, online, upi',
+            'string.empty': 'Payment method is required'
+        }),
+        paymentDetails: Joi.object({
+            transactionId: Joi.string().optional().allow('', null),
+            upiId: Joi.string().optional().allow('', null),
+            cardLast4: Joi.string().optional().allow('', null)
+        }).optional().allow(null),
+        orderNotes: Joi.string().max(500).optional().allow('', null).messages({
+            'string.max': 'Order notes cannot exceed 500 characters'
+        })
+    }),
+
     // =====================================================
     // WATCHLIST VALIDATORS
     // =====================================================

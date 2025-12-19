@@ -193,6 +193,7 @@ CREATE TABLE IF NOT EXISTS checkout_sessions (
     
     -- Session status
     status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'expired', 'cancelled')),
+    is_used BOOLEAN DEFAULT FALSE,
     
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const UserRole = require('../models/UserRole');
 const RefreshToken = require('../models/RefreshToken');
 const { passwordUtils, jwtUtils, otpUtils, sanitizeUtils } = require('../utils/auth.utils');
 const smsService = require('../services/sms.service');
@@ -7,11 +8,11 @@ const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.mid
 
 /**
  * @route   POST /auth/login
- * @desc    Login user with email/phone and password
+ * @desc    Login user with email/phone and password (Multi-role support)
  * @access  Public
  */
 const login = asyncHandler(async (req, res) => {
-    const { identifier, password } = req.validatedBody;
+    const { identifier, password, requestedRole } = req.validatedBody;
 
     // Find user by email or mobile
     const user = await User.findByEmailOrMobile(identifier);
@@ -53,11 +54,53 @@ const login = asyncHandler(async (req, res) => {
         );
     }
 
+    // Get all ACTIVE roles for this user
+    const activeRoles = await UserRole.findActiveRoles(user.id);
+
+    if (activeRoles.length === 0) {
+        throw new AppError(
+            'No active roles found for your account',
+            403,
+            ERROR_CODES.USER_INACTIVE
+        );
+    }
+
+    // Determine which role to use
+    let selectedRole;
+
+    if (requestedRole && activeRoles.includes(requestedRole)) {
+        // User requested specific role and has access
+        selectedRole = requestedRole;
+    } else if (activeRoles.length === 1) {
+        // User has only one role
+        selectedRole = activeRoles[0];
+    } else if (activeRoles.length > 1 && !requestedRole) {
+        // User has multiple roles but didn't specify which one
+        // Return available roles for frontend to show role selector
+        return res.json({
+            success: true,
+            requiresRoleSelection: true,
+            availableRoles: activeRoles,
+            user: {
+                id: user.id,
+                email: user.business_email,
+                firstName: user.first_name,
+                lastName: user.last_name
+            }
+        });
+    } else {
+        throw new AppError(
+            'Invalid role selected',
+            403,
+            ERROR_CODES.INVALID_ROLE
+        );
+    }
+
     // Update last login
     await User.updateLastLogin(user.id);
 
-    // Generate tokens
-    const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, user.role);
+    // Generate tokens with role in payload
+    const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, selectedRole);
     const refreshToken = jwtUtils.generateRefreshToken(user.id);
 
     // Store refresh token
@@ -69,7 +112,11 @@ const login = asyncHandler(async (req, res) => {
         success: true,
         message: 'Login successful',
         data: {
-            user: sanitizeUtils.sanitizeUser(user),
+            user: {
+                ...sanitizeUtils.sanitizeUser(user),
+                activeRole: selectedRole, // Override activeRole with the selected role
+                roles: activeRoles // Include all available roles
+            },
             accessToken,
             refreshToken
         }
@@ -268,6 +315,76 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @route   POST /auth/switch-role
+ * @desc    Switch between buyer and supplier roles
+ * @access  Private
+ */
+const switchRole = asyncHandler(async (req, res) => {
+    const { newRole, password } = req.body;
+    const userId = req.user.id;
+
+    if (!newRole) {
+        throw new AppError('New role is required', 400);
+    }
+
+    if (!['buyer', 'supplier'].includes(newRole)) {
+        throw new AppError('Invalid role. Must be buyer or supplier', 400);
+    }
+
+    // Get user
+    const user = await User.findById(userId);
+    if (!user) {
+        throw new AppError('User not found', 404, ERROR_CODES.USER_NOT_FOUND);
+    }
+
+    // Edge Case: Require password confirmation for security
+    // Especially important for first-time role switch
+    if (password) {
+        const isPasswordValid = await passwordUtils.compare(password, user.password_hash);
+        if (!isPasswordValid) {
+            throw new AppError(
+                'Invalid password',
+                401,
+                ERROR_CODES.INVALID_CREDENTIALS
+            );
+        }
+    }
+
+    // Check if user has the requested role and it's active
+    const hasRole = await UserRole.hasActiveRole(userId, newRole);
+    if (!hasRole) {
+        throw new AppError(
+            `You don't have access to ${newRole} role or it's not active yet`,
+            403,
+            ERROR_CODES.INVALID_ROLE
+        );
+    }
+
+    // Generate new token with new role
+    const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, newRole);
+    const refreshToken = jwtUtils.generateRefreshToken(user.id);
+
+    // Store refresh token
+    const refreshTokenExpiry = jwtUtils.getExpiryTime(process.env.JWT_REFRESH_EXPIRY || '7d');
+    await RefreshToken.create(user.id, refreshToken, refreshTokenExpiry.toISOString());
+    await redisHelpers.storeRefreshToken(user.id, refreshToken, 7 * 24 * 60 * 60);
+
+    // Get all available roles for response
+    const availableRoles = await UserRole.findActiveRoles(userId);
+
+    res.json({
+        success: true,
+        message: `Switched to ${newRole} role successfully`,
+        data: {
+            currentRole: newRole,
+            availableRoles: availableRoles,
+            accessToken,
+            refreshToken
+        }
+    });
+});
+
+/**
  * @route   POST /auth/logout
  * @desc    Logout user
  * @access  Private
@@ -311,6 +428,7 @@ module.exports = {
     sendLoginOTP,
     verifyLoginOTP,
     refreshAccessToken,
+    switchRole,
     logout,
     logoutAll
 };

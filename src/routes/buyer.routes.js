@@ -55,6 +55,16 @@ router.get(
 );
 
 /**
+ * @route   GET /api/buyer/orders/export
+ * @desc    Export orders to Excel/CSV
+ * @access  Private (Buyer)
+ */
+router.get(
+    '/orders/export',
+    orderController.exportOrders
+);
+
+/**
  * @route   GET /api/buyer/orders/:orderId
  * @desc    Get specific order details
  * @access  Private (Buyer)
@@ -66,6 +76,17 @@ router.get(
 );
 
 /**
+ * @route   POST /api/buyer/orders/create
+ * @desc    Create a new order from checkout session
+ * @access  Private (Buyer)
+ */
+router.post(
+    '/orders/create',
+    validate(buyerValidation.createOrder),
+    orderController.createOrder
+);
+
+/**
  * @route   GET /api/buyer/orders/:orderId/tracking
  * @desc    Get order tracking information
  * @access  Private (Buyer)
@@ -74,6 +95,17 @@ router.get(
     '/orders/:orderId/tracking',
     validate(buyerValidation.orderIdParam, 'params'),
     orderController.getOrderTracking
+);
+
+/**
+ * @route   GET /api/buyer/orders/:orderId/invoice
+ * @desc    Download PDF invoice for an order
+ * @access  Private (Buyer)
+ */
+router.get(
+    '/orders/:orderId/invoice',
+    validate(buyerValidation.orderIdParam, 'params'),
+    orderController.downloadInvoice
 );
 
 /**

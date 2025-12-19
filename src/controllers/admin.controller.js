@@ -92,13 +92,21 @@ const approveVerification = asyncHandler(async (req, res) => {
         throw new AppError('This supplier is already verified', 400, 'ALREADY_VERIFIED');
     }
 
-    // Update status to verified and add supplier role
+    // Update status to verified
     const updatedProfile = await SupplierVerification.updateStatus(
         id,
         'verified',
         notes || 'Supplier verification approved by admin',
         adminId
     );
+
+    // Add supplier role to user_roles table (or activate if exists)
+    const UserRole = require('../models/UserRole');
+    await UserRole.upsert(verification.user_id, 'supplier', {
+        is_active: true,
+        verification_status: 'verified',
+        verified_at: new Date().toISOString()
+    });
 
     // Send approval email to supplier
     const user = verification.users;
@@ -114,10 +122,11 @@ const approveVerification = asyncHandler(async (req, res) => {
 
     res.json({
         success: true,
-        message: 'Supplier verification approved successfully',
+        message: 'Supplier verification approved successfully. User can now login as supplier.',
         data: {
             profile: updatedProfile,
-            supplierCanNowSwitch: true
+            supplierRoleAdded: true,
+            supplierCanNowLogin: true
         }
     });
 });

@@ -23,8 +23,8 @@ const getProductDetail = async (req, res) => {
       });
     }
 
-    // Track view
-    await ProductDetail.incrementViews(id).catch(() => { });
+    // Track view using the resolved product ID
+    await ProductDetail.incrementViews(product.id).catch(() => { });
 
     res.json({
       success: true,

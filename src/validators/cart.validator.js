@@ -158,9 +158,7 @@ const createCheckout = Joi.object({
         addressType: Joi.string()
             .valid('office', 'warehouse', 'factory', 'other')
             .default('office')
-    }).required().messages({
-        'any.required': 'Shipping address is required'
-    }),
+    }).optional(),
 
     billingAddress: Joi.object({
         fullName: Joi.string().trim().min(2).max(100).required(),

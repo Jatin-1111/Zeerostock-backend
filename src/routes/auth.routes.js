@@ -118,6 +118,20 @@ router.post(
 
 /**
  * @swagger
+ * /auth/switch-role:
+ *   post:
+ *     summary: Switch between buyer and supplier roles
+ *     tags: [Authentication]
+ *     description: Switch active role for users with multiple roles
+ */
+router.post(
+    '/switch-role',
+    verifyToken,
+    loginController.switchRole
+);
+
+/**
+ * @swagger
  * /auth/logout:
  *   post:
  *     summary: Logout user

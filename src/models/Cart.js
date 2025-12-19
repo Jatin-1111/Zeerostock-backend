@@ -28,14 +28,32 @@ class Cart {
                     .select('*')
                     .eq('session_token', sessionToken)
                     .eq('is_guest', true)
-                    .single();
+                    .maybeSingle(); // Use maybeSingle instead of single
 
-                if (!error && session && new Date(session.expires_at) > new Date()) {
+                if (session && new Date(session.expires_at) > new Date()) {
                     return session;
                 }
+
+                // Session not found or expired - try upsert to handle duplicates
+                const { data: newSession, error: upsertError } = await supabase
+                    .from('cart_sessions')
+                    .upsert({
+                        session_token: sessionToken,
+                        is_guest: true,
+                        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                        updated_at: new Date()
+                    }, {
+                        onConflict: 'session_token',
+                        ignoreDuplicates: false
+                    })
+                    .select()
+                    .single();
+
+                if (upsertError) throw upsertError;
+                return newSession;
             }
 
-            // Create new session
+            // No sessionToken provided - create new session with generated token
             const newToken = this.generateSessionToken();
             const { data: newSession, error: createError } = await supabase
                 .from('cart_sessions')
@@ -100,20 +118,31 @@ class Cart {
      */
     static async addItem({ userId = null, sessionToken = null, productId, quantity }) {
         try {
+            // Validate inputs
+            if (!productId) {
+                throw new Error('PRODUCT_ID_REQUIRED');
+            }
+
+            if (!quantity || quantity < 1) {
+                throw new Error('INVALID_QUANTITY');
+            }
+
             let generatedSessionToken = sessionToken;
-            // Get product details
+
+            // Get product details with category
             const { data: product, error: productError } = await supabase
                 .from('products')
-                .select('id, title, price_after, discount_percent, listing_type, condition, unit, supplier_id, quantity, category_id, status')
+                .select('id, title, price_after, discount_percent, listing_type, condition, unit, supplier_id, quantity, category_id, status, image_url, slug')
                 .eq('id', productId)
                 .single();
 
             if (productError || !product) {
+                console.error('Product fetch error:', productError);
                 throw new Error('PRODUCT_NOT_FOUND');
             }
 
             // Map quantity to stock for consistency
-            product.stock = product.quantity;
+            product.stock = product.quantity || 0;
 
             // Validate product status
             if (product.status !== 'active') {
@@ -128,6 +157,11 @@ class Cart {
             // Check stock availability
             if (product.stock < quantity) {
                 throw new Error('NOT_ENOUGH_STOCK');
+            }
+
+            // Validate supplier exists
+            if (!product.supplier_id) {
+                throw new Error('INVALID_PRODUCT_SUPPLIER');
             }
 
             let cartId = null;
@@ -230,12 +264,12 @@ class Cart {
                 .single();
 
             if (insertError) throw insertError;
+
             // Return cart item with session token if generated
             return {
                 ...newItem,
                 _sessionToken: userId ? null : generatedSessionToken
-            }
-            return newItem;
+            };
 
         } catch (error) {
             console.error('Error adding item to cart:', error);
@@ -289,34 +323,80 @@ class Cart {
 
             if (error) throw error;
 
+            // Handle empty cart
+            if (!items || items.length === 0) {
+                return {
+                    items: [],
+                    coupon: couponInfo
+                };
+            }
+
             // Manually fetch product and supplier details for each item
-            const enrichedItems = await Promise.all((items || []).map(async (item) => {
-                // Get product details
-                const { data: product } = await supabase
-                    .from('products')
-                    .select('id, title, slug, image_url, price_after, discount_percent, quantity, status, listing_type, category_id')
-                    .eq('id', item.product_id)
-                    .single();
+            const enrichedItems = await Promise.all(items.map(async (item) => {
+                try {
+                    // Get product details with category
+                    const { data: product } = await supabase
+                        .from('products')
+                        .select(`
+                            id, title, slug, image_url, price_after, discount_percent, 
+                            quantity, status, listing_type,
+                            category:categories(id, name)
+                        `)
+                        .eq('id', item.product_id)
+                        .single();
 
-                // Get supplier details
-                const { data: supplier } = await supabase
-                    .from('users')
-                    .select('id, company_name, is_verified')
-                    .eq('id', item.supplier_id)
-                    .single();
+                    // Get supplier details
+                    const { data: supplier } = await supabase
+                        .from('users')
+                        .select('id, company_name, is_verified')
+                        .eq('id', item.supplier_id)
+                        .single();
 
-                let priceChanged = false;
-                let stockChanged = false;
-                let isAvailable = true;
+                    // If product is deleted, mark as unavailable
+                    if (!product) {
+                        return {
+                            itemId: item.id,
+                            productId: item.product_id,
+                            title: 'Product Unavailable',
+                            slug: null,
+                            image: null,
+                            quantity: item.quantity,
+                            price: item.price_at_add,
+                            originalPrice: item.price_at_add,
+                            discountPercent: 0,
+                            gstPercent: item.gst_percent || 0,
+                            listingType: item.listing_type,
+                            condition: item.condition,
+                            unit: item.unit,
+                            category: null,
+                            seller: {
+                                id: supplier?.id || null,
+                                name: supplier?.company_name || 'Unknown Seller',
+                                verified: supplier?.is_verified || false
+                            },
+                            availability: {
+                                isAvailable: false,
+                                priceChanged: false,
+                                stockChanged: false,
+                                currentStock: 0
+                            },
+                            available: false,
+                            addedAt: item.added_at
+                        };
+                    }
 
-                if (product) {
+                    let priceChanged = false;
+                    let stockChanged = false;
+                    let isAvailable = true;
+
                     // Check if price changed
                     if (product.price_after !== item.price_at_add) {
                         priceChanged = true;
                     }
 
                     // Check stock
-                    if (product.quantity < item.quantity) {
+                    const currentStock = product.quantity || 0;
+                    if (currentStock < item.quantity) {
                         stockChanged = true;
                     }
 
@@ -325,7 +405,7 @@ class Cart {
                         isAvailable = false;
                     }
 
-                    // Update flags if changed
+                    // Update cart item flags if changed
                     if (priceChanged || stockChanged || !isAvailable) {
                         await supabase
                             .from('cart_items')
@@ -336,35 +416,73 @@ class Cart {
                             })
                             .eq('id', item.id);
                     }
-                }
 
-                return {
-                    itemId: item.id,
-                    productId: item.product_id,
-                    title: product?.title || 'Product Unavailable',
-                    slug: product?.slug,
-                    image: product?.image_url,
-                    quantity: item.quantity,
-                    price: product?.price_after || item.price_at_add,
-                    originalPrice: item.price_at_add,
-                    discountPercent: product?.discount_percent || item.discount_percent_at_add,
-                    gstPercent: item.gst_percent,
-                    listingType: item.listing_type,
-                    condition: item.condition,
-                    unit: item.unit,
-                    seller: {
-                        id: supplier?.id,
-                        name: supplier?.company_name,
-                        verified: supplier?.is_verified
-                    },
-                    availability: {
-                        isAvailable,
-                        priceChanged,
-                        stockChanged,
-                        currentStock: product?.quantity || 0
-                    },
-                    addedAt: item.added_at
-                };
+                    return {
+                        itemId: item.id,
+                        productId: item.product_id,
+                        title: product.title,
+                        slug: product.slug,
+                        image: product.image_url || null,
+                        quantity: item.quantity,
+                        price: product.price_after,
+                        originalPrice: item.price_at_add,
+                        discountPercent: product.discount_percent || 0,
+                        gstPercent: item.gst_percent || 18,
+                        listingType: item.listing_type,
+                        condition: item.condition,
+                        unit: item.unit,
+                        category: product.category?.name || null,
+                        // Add supplier info for order creation
+                        supplierId: supplier?.id || null,
+                        supplierName: supplier?.company_name || null,
+                        supplierCity: null, // Not available in users table, will be null
+                        seller: {
+                            id: supplier?.id || null,
+                            name: supplier?.company_name || 'Unknown Seller',
+                            verified: supplier?.is_verified || false
+                        },
+                        availability: {
+                            isAvailable,
+                            priceChanged,
+                            stockChanged,
+                            currentStock
+                        },
+                        available: isAvailable && currentStock >= item.quantity,
+                        addedAt: item.added_at
+                    };
+                } catch (itemError) {
+                    console.error('Error enriching cart item:', itemError);
+                    // Return basic item info if enrichment fails
+                    return {
+                        itemId: item.id,
+                        productId: item.product_id,
+                        title: 'Error Loading Product',
+                        slug: null,
+                        image: null,
+                        quantity: item.quantity,
+                        price: item.price_at_add,
+                        originalPrice: item.price_at_add,
+                        discountPercent: 0,
+                        gstPercent: 0,
+                        listingType: item.listing_type,
+                        condition: item.condition,
+                        unit: item.unit,
+                        category: null,
+                        seller: {
+                            id: null,
+                            name: 'Unknown',
+                            verified: false
+                        },
+                        availability: {
+                            isAvailable: false,
+                            priceChanged: false,
+                            stockChanged: false,
+                            currentStock: 0
+                        },
+                        available: false,
+                        addedAt: item.added_at
+                    };
+                }
             }));
 
             return {
@@ -385,7 +503,7 @@ class Cart {
      * @param {string} userId - User ID (for verification)
      * @returns {Promise<Object>} - Updated item
      */
-    static async updateItemQuantity(itemId, quantity, userId = null) {
+    static async updateItemQuantity(itemId, quantity, userId = null, sessionToken = null) {
         try {
             if (quantity <= 0) {
                 throw new Error('INVALID_QUANTITY');
@@ -411,6 +529,19 @@ class Cart {
                     .single();
 
                 if (cart?.user_id !== userId) {
+                    throw new Error('UNAUTHORIZED');
+                }
+            }
+
+            // For guest cart, verify session
+            if (!userId && item.session_id && sessionToken) {
+                const { data: session } = await supabase
+                    .from('cart_sessions')
+                    .select('id')
+                    .eq('session_token', sessionToken)
+                    .single();
+
+                if (!session || session.id !== item.session_id) {
                     throw new Error('UNAUTHORIZED');
                 }
             }
@@ -442,14 +573,15 @@ class Cart {
      * Remove item from cart
      * @param {string} itemId - Cart item ID
      * @param {string} userId - User ID (for verification)
+     * @param {string} sessionToken - Session token (for guest cart verification)
      * @returns {Promise<boolean>} - Success status
      */
-    static async removeItem(itemId, userId = null) {
+    static async removeItem(itemId, userId = null, sessionToken = null) {
         try {
             // Get cart item
             const { data: item, error: fetchError } = await supabase
                 .from('cart_items')
-                .select('cart_id')
+                .select('cart_id, session_id')
                 .eq('id', itemId)
                 .single();
 
@@ -466,6 +598,19 @@ class Cart {
                     .single();
 
                 if (cart?.user_id !== userId) {
+                    throw new Error('UNAUTHORIZED');
+                }
+            }
+
+            // For guest cart, verify session
+            if (!userId && item.session_id && sessionToken) {
+                const { data: session } = await supabase
+                    .from('cart_sessions')
+                    .select('id')
+                    .eq('session_token', sessionToken)
+                    .single();
+
+                if (!session || session.id !== item.session_id) {
                     throw new Error('UNAUTHORIZED');
                 }
             }

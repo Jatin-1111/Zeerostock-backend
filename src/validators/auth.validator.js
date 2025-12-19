@@ -136,6 +136,13 @@ const authValidation = {
             .required()
             .messages({
                 'string.empty': 'Password is required'
+            }),
+
+        requestedRole: Joi.string()
+            .valid('buyer', 'supplier', 'admin')
+            .optional()
+            .messages({
+                'any.only': 'Invalid role. Must be buyer, supplier, or admin'
             })
     }),
 

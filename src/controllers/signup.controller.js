@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const UserRole = require('../models/UserRole');
 const RefreshToken = require('../models/RefreshToken');
 const PasswordResetToken = require('../models/PasswordResetToken');
 const { passwordUtils, jwtUtils, otpUtils, tokenUtils, sanitizeUtils } = require('../utils/auth.utils');
@@ -10,7 +11,7 @@ const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.mid
 
 /**
  * @route   POST /auth/signup
- * @desc    Register a new user
+ * @desc    Register a new user (automatically creates buyer role)
  * @access  Public
  */
 const signup = asyncHandler(async (req, res) => {
@@ -63,11 +64,14 @@ const signup = asyncHandler(async (req, res) => {
         password_hash: passwordHash,
         business_type: businessType,
         gst_number: gstNumber || null,
-        role: 'buyer', // Default role
+        role: 'buyer', // Default role (legacy field)
         is_verified: false,
         otp: otp,
         otp_expires_at: otpExpiresAt.toISOString()
     });
+
+    // Create buyer role by default (active after verification)
+    await UserRole.create(user.id, 'buyer', false); // Not active until email verified
 
     // Store OTP in Redis for faster verification
     await redisHelpers.storeOTP(
@@ -150,11 +154,18 @@ const verifyOTP = asyncHandler(async (req, res) => {
     const verifiedUser = await User.markAsVerified(user.id);
     await User.updateLastLogin(user.id);
 
-    // Generate tokens
+    // Activate buyer role after email verification
+    await UserRole.updateStatus(user.id, 'buyer', {
+        is_active: true,
+        verification_status: 'approved',
+        verified_at: new Date()
+    });
+
+    // Generate tokens (default to buyer role)
     const accessToken = jwtUtils.generateAccessToken(
         verifiedUser.id,
         verifiedUser.business_email,
-        verifiedUser.role
+        'buyer' // Always start with buyer role after signup
     );
     const refreshToken = jwtUtils.generateRefreshToken(verifiedUser.id);
 

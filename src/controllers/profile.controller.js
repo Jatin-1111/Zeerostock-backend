@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const UserRole = require('../models/UserRole');
 const { sanitizeUtils } = require('../utils/auth.utils');
 const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.middleware');
 
@@ -17,6 +18,13 @@ const getProfile = asyncHandler(async (req, res) => {
             ERROR_CODES.USER_NOT_FOUND
         );
     }
+
+    // Get all active roles for the user
+    const activeRoles = await UserRole.findActiveRoles(req.userId);
+
+    // Add role information from JWT token
+    user.active_role = req.role; // From JWT token
+    user.roles = activeRoles;
 
     res.json({
         success: true,

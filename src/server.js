@@ -17,8 +17,13 @@ const searchRoutes = require('./routes/search.routes');
 const productDetailRoutes = require('./routes/productDetail.routes');
 const cartRoutes = require('./routes/cart.routes');
 const buyerRoutes = require('./routes/buyer.routes');
+const rfqRoutes = require('./routes/rfq.routes');
+const quoteRoutes = require('./routes/quote.routes');
+const settingsRoutes = require('./routes/settings.routes');
 const roleRoutes = require('./routes/role.routes');
 const adminRoutes = require('./routes/admin.routes');
+const supplierVerificationRoutes = require('./routes/supplierVerification.routes');
+const supplierRoutes = require('./routes/supplier.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -98,6 +103,8 @@ app.get('/', (req, res) => {
             products: '/api/products',
             cart: '/api/cart',
             buyer: '/api/buyer',
+            rfq: '/api/rfq',
+            quotes: '/api/quotes',
             health: '/health'
         },
         security: {
@@ -118,6 +125,11 @@ app.use('/api/search', searchRoutes);
 app.use('/api/products', productDetailRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/buyer', buyerRoutes);
+app.use('/api/rfq', rfqRoutes);
+app.use('/api/quotes', quoteRoutes);
+app.use('/api/buyer/settings', settingsRoutes);
+app.use('/api/supplier/verification', supplierVerificationRoutes);
+app.use('/api/supplier', supplierRoutes);
 
 // 404 handler
 app.use(notFound);

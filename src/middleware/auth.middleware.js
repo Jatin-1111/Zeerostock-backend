@@ -1,6 +1,7 @@
 const { jwtUtils, responseUtils } = require('../utils/auth.utils');
 const { AppError, ERROR_CODES } = require('./error.middleware');
 const User = require('../models/User');
+const UserRole = require('../models/UserRole');
 
 /**
  * Verify JWT token middleware
@@ -48,6 +49,31 @@ const verifyToken = async (req, res, next) => {
                 401,
                 ERROR_CODES.USER_INACTIVE
             );
+        }
+
+        // **MULTI-ROLE VALIDATION**: Verify token role matches user's active role
+        if (decoded.role) {
+            const userRole = await UserRole.findByUserAndRole(decoded.userId, decoded.role);
+
+            if (!userRole) {
+                throw new AppError(
+                    'Invalid role in token. Please log in again.',
+                    401,
+                    ERROR_CODES.INVALID_TOKEN
+                );
+            }
+
+            if (!userRole.is_active) {
+                throw new AppError(
+                    `Your ${decoded.role} role is not active. Please contact support.`,
+                    403,
+                    ERROR_CODES.ROLE_INACTIVE
+                );
+            }
+
+            // Attach role information to request
+            req.userRole = userRole;
+            req.role = decoded.role;
         }
 
         // Attach user to request
@@ -140,19 +166,20 @@ const requireRole = (...roles) => {
             );
         }
 
-        if (!req.user.roles || !Array.isArray(req.user.roles)) {
+        // Check against the active role from JWT token (req.role)
+        if (!req.role) {
             throw new AppError(
-                'User roles not properly configured',
-                500,
-                ERROR_CODES.INTERNAL_ERROR
+                'User role not found in token. Please log in again.',
+                401,
+                ERROR_CODES.UNAUTHORIZED
             );
         }
 
-        const hasRole = roles.some(role => req.user.roles.includes(role));
+        const hasRole = roles.includes(req.role);
 
         if (!hasRole) {
             throw new AppError(
-                `Access denied. Required role(s): ${roles.join(' or ')}`,
+                `Access denied. Required role(s): ${roles.join(' or ')}. Your active role: ${req.role}`,
                 403,
                 ERROR_CODES.FORBIDDEN
             );

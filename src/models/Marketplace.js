@@ -34,10 +34,15 @@ class Marketplace {
         } = filters;
 
         try {
-            // Build base query
+            // Build base query with supplier information
             let query = supabase
                 .from('products')
-                .select('*, categories(id, name, slug), industries(id, name, slug)', { count: 'exact' })
+                .select(`
+                    *,
+                    categories(id, name, slug),
+                    industries(id, name, slug),
+                    supplier:users!supplier_id(id, first_name, last_name, company_name, is_verified)
+                `, { count: 'exact' })
                 .eq('status', 'active');
 
             // Apply filters
@@ -162,7 +167,12 @@ class Marketplace {
     static async getFeaturedDeals(limit = 12) {
         const { data, error } = await supabase
             .from('products')
-            .select('*, categories(id, name, slug), industries(id, name, slug)')
+            .select(`
+                *,
+                categories(id, name, slug),
+                industries(id, name, slug),
+                supplier:users!supplier_id(id, first_name, last_name, company_name, is_verified)
+            `)
             .eq('status', 'active')
             .eq('is_featured', true)
             .order('featured_priority', { ascending: false })
@@ -185,7 +195,12 @@ class Marketplace {
     static async getSponsored(limit = 10) {
         const { data, error } = await supabase
             .from('products')
-            .select('*, categories(id, name, slug), industries(id, name, slug)')
+            .select(`
+                *,
+                categories(id, name, slug),
+                industries(id, name, slug),
+                supplier:users!supplier_id(id, first_name, last_name, company_name, is_verified)
+            `)
             .eq('status', 'active')
             .eq('is_sponsored', true)
             .order('sponsored_priority', { ascending: false })
@@ -208,7 +223,12 @@ class Marketplace {
     static async getTrending(limit = 20) {
         const { data, error } = await supabase
             .from('products')
-            .select('*, categories(id, name, slug), industries(id, name, slug)')
+            .select(`
+                *,
+                categories(id, name, slug),
+                industries(id, name, slug),
+                supplier:users!supplier_id(id, first_name, last_name, company_name, is_verified)
+            `)
             .eq('status', 'active')
             .eq('is_trending', true)
             .order('views_count', { ascending: false })

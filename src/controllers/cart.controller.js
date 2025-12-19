@@ -13,9 +13,9 @@ const PricingService = require('../services/pricing.service');
  */
 const addToCart = async (req, res) => {
     try {
-        const { productId, quantity = 1 } = req.body;
+        const { productId, quantity = 1, sessionId } = req.body;
         const userId = req.user?.id || null;
-        const sessionToken = req.cookies?.cart_session || req.headers['x-cart-session'];
+        const sessionToken = sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         const cartItem = await Cart.addItem({
             userId,
@@ -48,10 +48,13 @@ const addToCart = async (req, res) => {
 
         // Handle specific error cases
         const errorMessages = {
+            'PRODUCT_ID_REQUIRED': 'Product ID is required',
+            'INVALID_QUANTITY': 'Quantity must be at least 1',
             'PRODUCT_NOT_FOUND': 'Product not found',
             'PRODUCT_NOT_AVAILABLE': 'Product is not available',
             'AUCTION_ITEM_NOT_ALLOWED_IN_CART': 'Auction items cannot be added to cart. Please bid on the auction page.',
             'NOT_ENOUGH_STOCK': 'Insufficient stock available',
+            'INVALID_PRODUCT_SUPPLIER': 'Product has invalid supplier information',
             'USER_OR_SESSION_REQUIRED': 'Invalid cart session'
         };
 
@@ -73,7 +76,7 @@ const addToCart = async (req, res) => {
 const getCart = async (req, res) => {
     try {
         const userId = req.user?.id || null;
-        const sessionToken = req.cookies?.cart_session || req.headers['x-cart-session'];
+        const sessionToken = req.query.sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         // Get cart items
         const cartData = await Cart.getCart(userId, sessionToken);
@@ -118,7 +121,7 @@ const getCart = async (req, res) => {
                 coupon: cartData.coupon,
                 itemCount: cartData.items.length,
                 hasIssues,
-                warnings: hasIssues ? this.generateWarnings(cartData.items) : []
+                warnings: hasIssues ? generateWarnings(cartData.items) : []
             }
         });
 
@@ -139,8 +142,9 @@ const getCart = async (req, res) => {
 const updateCartItem = async (req, res) => {
     try {
         const { itemId } = req.params;
-        const { quantity } = req.body;
+        const { quantity, sessionId } = req.body;
         const userId = req.user?.id || null;
+        const sessionToken = sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         if (!quantity || quantity < 1) {
             return res.status(400).json({
@@ -149,7 +153,9 @@ const updateCartItem = async (req, res) => {
             });
         }
 
-        const updatedItem = await Cart.updateItemQuantity(itemId, quantity, userId);
+        console.log('updateCartItem: userId=', userId, 'sessionToken=', sessionToken, 'itemId=', itemId, 'quantity=', quantity);
+
+        const updatedItem = await Cart.updateItemQuantity(itemId, quantity, userId, sessionToken);
 
         res.json({
             success: true,
@@ -187,8 +193,11 @@ const removeFromCart = async (req, res) => {
     try {
         const { itemId } = req.params;
         const userId = req.user?.id || null;
+        const sessionToken = req.query.sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
-        await Cart.removeItem(itemId, userId);
+        console.log('removeFromCart: userId=', userId, 'sessionToken=', sessionToken, 'itemId=', itemId);
+
+        await Cart.removeItem(itemId, userId, sessionToken);
 
         res.json({
             success: true,
@@ -222,7 +231,7 @@ const removeFromCart = async (req, res) => {
 const clearCart = async (req, res) => {
     try {
         const userId = req.user?.id || null;
-        const sessionToken = req.cookies?.cart_session || req.headers['x-cart-session'];
+        const sessionToken = req.body.sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         await Cart.clearCart(userId, sessionToken);
 
@@ -247,9 +256,9 @@ const clearCart = async (req, res) => {
  */
 const applyCoupon = async (req, res) => {
     try {
-        const { couponCode } = req.body;
+        const { couponCode, sessionId } = req.body;
         const userId = req.user?.id || null;
-        const sessionToken = req.cookies?.cart_session || req.headers['x-cart-session'];
+        const sessionToken = sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         if (!couponCode) {
             return res.status(400).json({
@@ -320,8 +329,9 @@ const applyCoupon = async (req, res) => {
  */
 const removeCoupon = async (req, res) => {
     try {
+        const { sessionId } = req.body;
         const userId = req.user?.id || null;
-        const sessionToken = req.cookies?.cart_session || req.headers['x-cart-session'];
+        const sessionToken = sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         await Cart.removeCoupon(userId, sessionToken);
 
@@ -347,7 +357,7 @@ const removeCoupon = async (req, res) => {
 const validateCart = async (req, res) => {
     try {
         const userId = req.user?.id || null;
-        const sessionToken = req.cookies?.cart_session || req.headers['x-cart-session'];
+        const sessionToken = req.query.sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         // Get cart items
         const cartData = await Cart.getCart(userId, sessionToken);
@@ -441,8 +451,8 @@ const createCheckoutSession = async (req, res) => {
         if (!cartData.items || cartData.items.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Cart is empty',
-                error: 'CART_EMPTY'
+                errorCode: 'CART_EMPTY',
+                message: 'Your cart is empty. Add items before checkout.'
             });
         }
 
@@ -452,9 +462,12 @@ const createCheckoutSession = async (req, res) => {
         if (!validation.valid) {
             return res.status(400).json({
                 success: false,
-                message: 'Some items in your cart are not available',
-                error: 'CART_VALIDATION_FAILED',
-                data: validation
+                errorCode: 'STOCK_VALIDATION_FAILED',
+                message: 'Some items in your cart have stock issues',
+                data: {
+                    unavailableItems: validation.unavailableItems || [],
+                    stockIssues: validation.stockIssues || []
+                }
             });
         }
 
@@ -464,8 +477,8 @@ const createCheckoutSession = async (req, res) => {
         if (hasNegotiableItems) {
             return res.status(400).json({
                 success: false,
-                message: 'Cart contains negotiable items. Please finalize prices before checkout.',
-                error: 'NEGOTIATION_REQUIRED'
+                errorCode: 'NEGOTIATION_REQUIRED',
+                message: 'Your cart contains items requiring price negotiation. Please finalize prices through RFQ before checkout.'
             });
         }
 
@@ -488,15 +501,20 @@ const createCheckoutSession = async (req, res) => {
         const crypto = require('crypto');
         const sessionToken = crypto.randomBytes(32).toString('hex');
 
+        // Prepare complete cart snapshot with all necessary data
+        const cartSnapshot = {
+            items: cartData.items,
+            coupon: cartData.coupon,
+            itemCount: cartData.items.length,
+            summary: summary
+        };
+
         const { data: checkoutSession, error } = await supabase
             .from('checkout_sessions')
             .insert({
                 session_token: sessionToken,
                 user_id: userId,
-                cart_snapshot: JSON.stringify({
-                    items: cartData.items,
-                    coupon: cartData.coupon
-                }),
+                cart_snapshot: cartSnapshot,
                 item_subtotal: summary.itemSubtotal,
                 discount_amount: summary.discountAmount,
                 coupon_discount: summary.couponDiscount,
@@ -522,7 +540,9 @@ const createCheckoutSession = async (req, res) => {
             data: {
                 sessionToken: checkoutSession.session_token,
                 sessionId: checkoutSession.id,
-                summary,
+                cartItems: cartData.items,
+                itemCount: cartData.items.length,
+                pricingSummary: summary,
                 expiresAt: checkoutSession.expires_at,
                 expiresIn: 1800 // 30 minutes in seconds
             }
@@ -544,8 +564,9 @@ const createCheckoutSession = async (req, res) => {
  */
 const mergeCart = async (req, res) => {
     try {
+        const { sessionId } = req.body;
         const userId = req.user?.id;
-        const sessionToken = req.cookies?.cart_session || req.headers['x-cart-session'];
+        const sessionToken = sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         if (!userId) {
             return res.status(401).json({
@@ -589,7 +610,7 @@ const mergeCart = async (req, res) => {
 const getCartCount = async (req, res) => {
     try {
         const userId = req.user?.id || null;
-        const sessionToken = req.cookies?.cart_session || req.headers['x-cart-session'];
+        const sessionToken = req.query.sessionId || req.cookies?.cart_session || req.headers['x-cart-session'];
 
         const count = await Cart.getCartCount(userId, sessionToken);
 

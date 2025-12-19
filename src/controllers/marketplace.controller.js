@@ -31,31 +31,22 @@ const formatTimeRemaining = (seconds) => {
  * @returns {Object}
  */
 const formatMarketplaceProduct = (product) => {
+    // Extract supplier information from joined data
+    const supplier = product.supplier || {};
+    const supplierName = supplier.company_name ||
+        (supplier.first_name ? `${supplier.first_name} ${supplier.last_name || ''}`.trim() : 'Zeerostock');
+
     return {
-        id: product.id,
+        productId: product.id,
         title: product.title,
         slug: product.slug,
-        imageUrl: product.image_url,
+        image: product.image_url,
+        images: product.additional_images ? JSON.parse(product.additional_images) : [],
         price: parseFloat(product.price_after),
-        priceBefore: product.price_before ? parseFloat(product.price_before) : null,
+        originalPrice: product.price_before ? parseFloat(product.price_before) : null,
         discountPercent: parseFloat(product.discount_percent) || 0,
-        rating: parseFloat(product.rating) || 0,
-        reviewCount: product.review_count || 0,
-        city: product.city,
-        state: product.state,
         condition: product.condition,
         listingType: product.listing_type,
-        supplierVerified: product.supplier_verified || false,
-        verifiedBadge: product.verified_badge_type || null,
-        views: product.views_count || 0,
-        watchers: product.watchers_count || 0,
-        availableQuantity: product.available_quantity || 1,
-        minOrderQuantity: product.min_order_quantity || 1,
-        timeLeft: formatTimeRemaining(product.time_remaining_seconds),
-        timeRemaining: product.time_remaining_seconds || null,
-        isSponsored: product.is_sponsored || false,
-        isFeatured: product.is_featured || false,
-        isTrending: product.is_trending || false,
         category: product.categories ? {
             id: product.categories.id,
             name: product.categories.name,
@@ -66,13 +57,22 @@ const formatMarketplaceProduct = (product) => {
             name: product.industries.name,
             slug: product.industries.slug
         } : null,
-        auction: product.listing_type === 'auction' ? {
-            currentBid: product.current_bid ? parseFloat(product.current_bid) : null,
-            totalBids: product.total_bids || 0,
-            expiresAt: product.expires_at
-        } : null,
-        listedAt: product.listed_at,
-        expiresAt: product.expires_at
+        city: product.city,
+        state: product.state,
+        seller: {
+            id: supplier.id || product.supplier_id,
+            name: supplierName,
+            rating: parseFloat(product.rating) || 0,
+            isVerified: supplier.is_verified || false
+        },
+        views: product.views_count || 0,
+        watchers: product.watchers_count || 0,
+        stockQuantity: product.available_quantity || 1,
+        minimumOrderQuantity: product.min_order_quantity || 1,
+        timeLeft: product.time_remaining_seconds || null,
+        isFeatured: product.is_featured || false,
+        isSponsored: product.is_sponsored || false,
+        createdAt: product.listed_at || product.created_at
     };
 };
 
