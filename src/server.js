@@ -1,143 +1,8 @@
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const cookieParser = require('cookie-parser');
+const app = require('./app');
+const { testConnection } = require('./config/database');
 require('dotenv').config();
 
-// Import configurations
-const { testConnection } = require('./config/database');
-// const { redisClient } = require('./config/redis');
-
-// Import routes
-const authRoutes = require('./routes/auth.routes');
-const homepageRoutes = require('./routes/homepage.routes');
-const marketplaceRoutes = require('./routes/marketplace.routes');
-const searchRoutes = require('./routes/search.routes');
-const productDetailRoutes = require('./routes/productDetail.routes');
-const cartRoutes = require('./routes/cart.routes');
-const buyerRoutes = require('./routes/buyer.routes');
-const rfqRoutes = require('./routes/rfq.routes');
-const quoteRoutes = require('./routes/quote.routes');
-const settingsRoutes = require('./routes/settings.routes');
-const roleRoutes = require('./routes/role.routes');
-const adminRoutes = require('./routes/admin.routes');
-const supplierVerificationRoutes = require('./routes/supplierVerification.routes');
-const supplierRoutes = require('./routes/supplier.routes');
-
-// Import middleware
-const { errorHandler, notFound } = require('./middleware/error.middleware');
-// const { generalLimiter } = require('./middleware/rateLimiter.middleware');
-
-// Initialize Express app
-const app = express();
-
-// Security middleware
-app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            scriptSrc: ["'self'"],
-            imgSrc: ["'self'", "data:", "https:"],
-        },
-    },
-    hsts: {
-        maxAge: 31536000,
-        includeSubDomains: true,
-        preload: true
-    }
-}));
-
-// CORS configuration
-const corsOptions = {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true,
-    optionsSuccessStatus: 200,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-};
-app.use(cors(corsOptions));
-
-// Body parser middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Cookie parser
-app.use(cookieParser());
-
-// Logging middleware
-if (process.env.NODE_ENV === 'development') {
-    app.use(morgan('dev'));
-} else {
-    app.use(morgan('combined'));
-}
-
-// General rate limiting - DISABLED FOR TESTING
-// app.use(generalLimiter);
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-    res.json({
-        success: true,
-        message: 'Server is running',
-        timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV
-    });
-});
-
-// API info endpoint
-app.get('/', (req, res) => {
-    res.json({
-        success: true,
-        message: 'Zeerostock B2B Marketplace API',
-        version: '1.0.0',
-        documentation: '/api-docs',
-        endpoints: {
-            auth: '/api/auth',
-            roles: '/api/roles',
-            admin: '/api/admin',
-            homepage: '/api/homepage',
-            marketplace: '/api/marketplace',
-            search: '/api/search',
-            products: '/api/products',
-            cart: '/api/cart',
-            buyer: '/api/buyer',
-            rfq: '/api/rfq',
-            quotes: '/api/quotes',
-            health: '/health'
-        },
-        security: {
-            soc2: 'Compliant',
-            gdpr: 'Compliant',
-            ssl: 'Enabled'
-        }
-    });
-});
-
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/roles', roleRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/homepage', homepageRoutes);
-app.use('/api/marketplace', marketplaceRoutes);
-app.use('/api/search', searchRoutes);
-app.use('/api/products', productDetailRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/buyer', buyerRoutes);
-app.use('/api/rfq', rfqRoutes);
-app.use('/api/quotes', quoteRoutes);
-app.use('/api/buyer/settings', settingsRoutes);
-app.use('/api/supplier/verification', supplierVerificationRoutes);
-app.use('/api/supplier', supplierRoutes);
-
-// 404 handler
-app.use(notFound);
-
-// Global error handler
-app.use(errorHandler);
-
-// Start server function
+// Start server function (only for local development)
 const startServer = async () => {
     try {
         // Test database connection
@@ -266,7 +131,11 @@ process.on('SIGTERM', () => {
     console.log('👋 SIGTERM received. Shutting down gracefully...');
     // redisClient.quit();
     process.exit(0);
-});// Start the server
-startServer();
+});
+
+// Start the server only if running locally (not in serverless)
+if (require.main === module) {
+    startServer();
+}
 
 module.exports = app;
