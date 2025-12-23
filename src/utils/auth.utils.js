@@ -34,13 +34,14 @@ const jwtUtils = {
     /**
      * Generate access token
      */
-    generateAccessToken(userId, email, role) {
+    generateAccessToken(userId, email, role, additionalData = {}) {
         return jwt.sign(
             {
                 userId,
                 email,
                 role,
-                type: 'access'
+                type: 'access',
+                ...additionalData
             },
             process.env.JWT_ACCESS_SECRET,
             { expiresIn: process.env.JWT_ACCESS_EXPIRY || '15m' }

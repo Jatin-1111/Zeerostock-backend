@@ -52,7 +52,8 @@ const verifyToken = async (req, res, next) => {
         }
 
         // **MULTI-ROLE VALIDATION**: Verify token role matches user's active role
-        if (decoded.role) {
+        // Skip this check for admin/super_admin roles (they use users.roles array)
+        if (decoded.role && decoded.role !== 'admin' && decoded.role !== 'super_admin' && decoded.role !== 'temp_admin') {
             const userRole = await UserRole.findByUserAndRole(decoded.userId, decoded.role);
 
             if (!userRole) {
@@ -74,6 +75,14 @@ const verifyToken = async (req, res, next) => {
             // Attach role information to request
             req.userRole = userRole;
             req.role = decoded.role;
+        }
+
+        // Attach decoded data to user object for admin routes
+        if (decoded.isSuperAdmin !== undefined) {
+            user.isSuperAdmin = decoded.isSuperAdmin;
+        }
+        if (decoded.roles) {
+            user.roles = decoded.roles;
         }
 
         // Attach user to request

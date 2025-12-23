@@ -8,7 +8,11 @@ const {
     rejectVerification,
     markUnderReview,
     getVerificationStats,
-    getAllVerifications
+    getAllVerifications,
+    getOrderStats,
+    getAllOrders,
+    getOrderDetails,
+    updateOrderStatus
 } = require('../controllers/admin.controller');
 
 // Middleware to check admin role
@@ -103,5 +107,37 @@ router.post('/supplier-verifications/:id/reject', rejectVerification);
  *       - bearerAuth: []
  */
 router.post('/supplier-verifications/:id/review', markUnderReview);
+
+/**
+ * ORDER MANAGEMENT ROUTES
+ */
+
+/**
+ * @route   GET /api/admin/orders/stats
+ * @desc    Get order statistics for admin dashboard
+ * @access  Private (Admin only)
+ */
+router.get('/orders/stats', getOrderStats);
+
+/**
+ * @route   GET /api/admin/orders
+ * @desc    Get all orders with filters
+ * @access  Private (Admin only)
+ */
+router.get('/orders', getAllOrders);
+
+/**
+ * @route   GET /api/admin/orders/:orderId
+ * @desc    Get specific order details
+ * @access  Private (Admin only)
+ */
+router.get('/orders/:orderId', getOrderDetails);
+
+/**
+ * @route   PUT /api/admin/orders/:orderId/status
+ * @desc    Update order status
+ * @access  Private (Admin only)
+ */
+router.put('/orders/:orderId/status', updateOrderStatus);
 
 module.exports = router;

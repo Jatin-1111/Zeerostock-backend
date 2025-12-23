@@ -18,6 +18,8 @@ const quoteRoutes = require('./routes/quote.routes');
 const settingsRoutes = require('./routes/settings.routes');
 const roleRoutes = require('./routes/role.routes');
 const adminRoutes = require('./routes/admin.routes');
+const adminManagementRoutes = require('./routes/adminManagement.routes');
+const userManagementRoutes = require('./routes/userManagement.routes');
 const supplierVerificationRoutes = require('./routes/supplierVerification.routes');
 const supplierRoutes = require('./routes/supplier.routes');
 
@@ -110,7 +112,9 @@ app.get('/', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/roles', roleRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/users', userManagementRoutes); // User management routes
+app.use('/api/admins', adminManagementRoutes); // Admin management routes
+app.use('/api/admin', adminRoutes); // Admin operations (supplier verification, etc.)
 app.use('/api/homepage', homepageRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/search', searchRoutes);

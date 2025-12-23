@@ -1,5 +1,6 @@
 const SupplierVerification = require('../models/SupplierVerification');
 const User = require('../models/User');
+const Order = require('../models/Order');
 const emailService = require('../services/email.service');
 const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.middleware');
 const {
@@ -264,6 +265,167 @@ const getAllVerifications = asyncHandler(async (req, res) => {
     });
 });
 
+/**
+ * ORDER MANAGEMENT
+ */
+
+/**
+ * @route   GET /api/admin/orders/stats
+ * @desc    Get order statistics for admin dashboard
+ * @access  Private (Admin only)
+ */
+const getOrderStats = asyncHandler(async (req, res) => {
+    const stats = await Order.getAdminStats();
+
+    res.json({
+        success: true,
+        data: stats
+    });
+});
+
+/**
+ * @route   GET /api/admin/orders
+ * @desc    Get all orders with filters
+ * @access  Private (Admin only)
+ */
+const getAllOrders = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 50, status, search, sortBy = 'created_at', sortOrder = 'desc' } = req.query;
+
+    const result = await Order.getAllOrdersAdmin({
+        page: parseInt(page),
+        limit: parseInt(limit),
+        status,
+        search,
+        sortBy,
+        sortOrder
+    });
+
+    res.json({
+        success: true,
+        data: result
+    });
+});
+
+/**
+ * @route   GET /api/admin/orders/:orderId
+ * @desc    Get specific order details
+ * @access  Private (Admin only)
+ */
+const getOrderDetails = asyncHandler(async (req, res) => {
+    const { orderId } = req.params;
+
+    const order = await Order.getOrderByIdAdmin(orderId);
+
+    if (!order) {
+        throw new AppError('Order not found', 404, ERROR_CODES.NOT_FOUND);
+    }
+
+    // Format the response similar to buyer endpoint
+    const formattedOrder = {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        status: order.status,
+        paymentStatus: order.payment_status,
+
+        // Items
+        items: order.order_items?.map(item => ({
+            itemId: item.id,
+            productId: item.product_id,
+            productTitle: item.product_title,
+            productImage: item.product_image,
+            productSku: item.product_sku,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            discount: item.discount_amount,
+            finalPrice: item.final_price,
+            subtotal: item.subtotal,
+            itemStatus: item.item_status,
+            supplier: {
+                id: item.supplier_id,
+                name: item.supplier_name,
+                city: item.supplier_city
+            }
+        })) || [],
+
+        // Pricing
+        pricing: {
+            itemsSubtotal: order.items_subtotal,
+            discountAmount: order.discount_amount,
+            couponDiscount: order.coupon_discount,
+            couponCode: order.coupon_code,
+            gstAmount: order.gst_amount,
+            shippingCharges: order.shipping_charges,
+            platformFee: order.platform_fee,
+            totalAmount: order.total_amount
+        },
+
+        // Shipping
+        shippingAddress: order.shipping_address,
+        billingAddress: order.billing_address,
+        deliveryEta: order.delivery_eta,
+        shippingPartner: order.shipping_partner,
+        trackingNumber: order.tracking_number,
+
+        // Payment
+        paymentMethod: order.payment_method,
+        paymentTransactionId: order.payment_transaction_id,
+        paymentDate: order.payment_date,
+
+        // Documents
+        invoiceUrl: order.invoice_url,
+        invoiceNumber: order.invoice_number,
+
+        // Tracking
+        tracking: order.order_tracking?.map(track => ({
+            status: track.status,
+            title: track.title,
+            description: track.description,
+            location: track.location,
+            isMilestone: track.is_milestone,
+            timestamp: track.created_at
+        })) || [],
+
+        // Timestamps
+        createdAt: order.created_at,
+        updatedAt: order.updated_at,
+        completedAt: order.completed_at,
+        userId: order.user_id
+    };
+
+    res.json({
+        success: true,
+        data: formattedOrder
+    });
+});
+
+/**
+ * @route   PUT /api/admin/orders/:orderId/status
+ * @desc    Update order status
+ * @access  Private (Admin only)
+ */
+const updateOrderStatus = asyncHandler(async (req, res) => {
+    const { orderId } = req.params;
+    const { status, notes } = req.body;
+
+    // Validate status
+    const validStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'in_transit', 'delivered', 'cancelled', 'issue'];
+    if (!validStatuses.includes(status)) {
+        throw new AppError('Invalid status', 400, ERROR_CODES.VALIDATION_ERROR);
+    }
+
+    const updatedOrder = await Order.updateOrderStatus(orderId, status, notes);
+
+    res.json({
+        success: true,
+        message: 'Order status updated successfully',
+        data: {
+            orderId: updatedOrder.id,
+            orderNumber: updatedOrder.order_number,
+            status: updatedOrder.status
+        }
+    });
+});
+
 module.exports = {
     getPendingVerifications,
     getVerificationDetails,
@@ -271,5 +433,10 @@ module.exports = {
     rejectVerification,
     markUnderReview,
     getVerificationStats,
-    getAllVerifications
+    getAllVerifications,
+    // Order management
+    getOrderStats,
+    getAllOrders,
+    getOrderDetails,
+    updateOrderStatus
 };

@@ -265,6 +265,151 @@ class Order {
             average_order_value: 0
         };
     }
+
+    /**
+     * ADMIN METHODS
+     */
+
+    /**
+     * Get all orders for admin with filters
+     * @param {Object} options - {page, limit, status, search, sortBy, sortOrder}
+     * @returns {Promise<Object>}
+     */
+    static async getAllOrdersAdmin(options = {}) {
+        const {
+            page = 1,
+            limit = 50,
+            status = null,
+            search = null,
+            sortBy = 'created_at',
+            sortOrder = 'desc'
+        } = options;
+
+        const offset = (page - 1) * limit;
+
+        let query = supabase
+            .from('orders')
+            .select(`
+                *,
+                order_items (
+                    id,
+                    product_title,
+                    quantity,
+                    final_price,
+                    subtotal,
+                    item_status
+                )
+            `, { count: 'exact' });
+
+        // Apply status filter
+        if (status && status !== 'all') {
+            query = query.eq('status', status);
+        }
+
+        // Apply search filter (order number or buyer email)
+        if (search) {
+            query = query.or(`order_number.ilike.%${search}%,shipping_address->>email.ilike.%${search}%`);
+        }
+
+        // Apply sorting
+        query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+
+        // Apply pagination
+        const { data, error, count } = await query.range(offset, offset + limit - 1);
+
+        if (error) throw error;
+
+        return {
+            orders: data || [],
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: count,
+                totalPages: Math.ceil(count / limit)
+            }
+        };
+    }
+
+    /**
+     * Get order statistics for admin
+     * @returns {Promise<Object>}
+     */
+    static async getAdminStats() {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('id, status, total_amount, created_at');
+
+        if (error) throw error;
+
+        const stats = {
+            totalOrders: data.length,
+            pending: data.filter(o => o.status === 'pending').length,
+            processing: data.filter(o => o.status === 'processing').length,
+            shipped: data.filter(o => o.status === 'shipped').length,
+            inTransit: data.filter(o => o.status === 'in_transit').length,
+            delivered: data.filter(o => o.status === 'delivered').length,
+            cancelled: data.filter(o => o.status === 'cancelled').length,
+            pendingDispatch: data.filter(o => ['pending', 'confirmed'].includes(o.status)).length,
+            deliveryIssues: data.filter(o => o.status === 'issue').length,
+            totalRevenue: data.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
+        };
+
+        return stats;
+    }
+
+    /**
+     * Get order by ID for admin (no user restriction)
+     * @param {string} orderId
+     * @returns {Promise<Object>}
+     */
+    static async getOrderByIdAdmin(orderId) {
+        const { data, error } = await supabase
+            .from('orders')
+            .select(`
+                *,
+                order_items (*),
+                order_tracking (*)
+            `)
+            .eq('id', orderId)
+            .single();
+
+        if (error) throw error;
+        return data;
+    }
+
+    /**
+     * Update order status (admin)
+     * @param {string} orderId
+     * @param {string} status
+     * @param {string} notes
+     * @returns {Promise<Object>}
+     */
+    static async updateOrderStatus(orderId, status, notes = null) {
+        const { data, error } = await supabase
+            .from('orders')
+            .update({
+                status,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', orderId)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Add tracking entry
+        if (notes) {
+            await supabase.from('order_tracking').insert({
+                order_id: orderId,
+                status,
+                title: `Order ${status.replace('_', ' ')}`,
+                description: notes,
+                is_milestone: true
+            });
+        }
+
+        return data;
+    }
 }
 
 module.exports = Order;

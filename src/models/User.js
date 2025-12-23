@@ -507,6 +507,129 @@ const User = {
 
         if (error && error.code !== 'PGRST116') return null;
         return data;
+    },
+
+    // ============================================
+    // ADMIN-SPECIFIC METHODS
+    // ============================================
+
+    /**
+     * Find admin by adminId
+     */
+    async findByAdminId(adminId) {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('admin_id', adminId)
+            .single();
+
+        if (error && error.code !== 'PGRST116') return null;
+        return data;
+    },
+
+    /**
+     * Check if adminId exists
+     */
+    async adminIdExists(adminId) {
+        const { data, error } = await supabase
+            .from('users')
+            .select('id')
+            .eq('admin_id', adminId)
+            .single();
+
+        return !!data;
+    },
+
+    /**
+     * Get all admin users
+     */
+    async getAllAdmins() {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .contains('roles', ['admin'])
+            .or('roles.cs.{super_admin}')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    },
+
+    /**
+     * Increment failed login attempts
+     */
+    async incrementFailedLoginAttempts(userId) {
+        const user = await this.findById(userId);
+        const attempts = (user.failed_login_attempts || 0) + 1;
+
+        const updateData = { failed_login_attempts: attempts };
+
+        // Lock account after 5 failed attempts
+        if (attempts >= 5) {
+            updateData.account_locked = true;
+            updateData.lock_until = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
+        }
+
+        const { data, error } = await supabase
+            .from('users')
+            .update(updateData)
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
+     * Reset failed login attempts
+     */
+    async resetFailedLoginAttempts(userId) {
+        const { data, error } = await supabase
+            .from('users')
+            .update({
+                failed_login_attempts: 0,
+                account_locked: false,
+                lock_until: null
+            })
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
+     * Update admin credentials (for password changes)
+     */
+    async updateAdminCredentials(userId, updates) {
+        const { data, error } = await supabase
+            .from('users')
+            .update(updates)
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
+     * Check if account lock has expired
+     */
+    async checkAndUnlockAccount(userId) {
+        const user = await this.findById(userId);
+
+        if (user && user.account_locked && user.lock_until) {
+            const lockUntil = new Date(user.lock_until);
+            if (lockUntil < new Date()) {
+                // Lock expired, unlock account
+                await this.resetFailedLoginAttempts(userId);
+                return true;
+            }
+        }
+        return false;
     }
 };
 

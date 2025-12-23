@@ -429,6 +429,256 @@ const emailService = {
       console.error('Email send error:', error);
       return false;
     }
+  },
+
+  /**
+   * Send admin credentials email
+   */
+  async sendAdminCredentials({ email, name, adminId, tempPassword, expiresIn = '24 hours' }) {
+    const loginUrl = process.env.ADMIN_PANEL_URL || 'http://localhost:3000/admin-panel/login';
+
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject: 'Your Zeerostock Admin Panel Access Credentials',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9fafb; padding: 30px; }
+            .credentials { background: white; padding: 20px; border-left: 4px solid #2563eb; margin: 20px 0; border-radius: 4px; }
+            .credential-row { margin: 15px 0; }
+            .label { font-weight: bold; color: #6b7280; font-size: 14px; }
+            .value { font-family: 'Courier New', monospace; font-size: 18px; color: #111827; background: #f3f4f6; padding: 8px 12px; border-radius: 4px; display: inline-block; margin-top: 5px; }
+            .button { display: inline-block; background: #2563eb; color: white !important; padding: 14px 32px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .warning { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px; }
+            .warning ul { margin: 10px 0; padding-left: 20px; }
+            .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="margin: 0;">🔐 Admin Access Granted</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">Zeerostock Admin Panel</p>
+            </div>
+            
+            <div class="content">
+              <p style="font-size: 16px;">Hi <strong>${name}</strong>,</p>
+              
+              <p>Welcome to the Zeerostock Admin Panel! Your admin account has been created successfully.</p>
+              
+              <p>Use the following credentials to log in:</p>
+              
+              <div class="credentials">
+                <div class="credential-row">
+                  <div class="label">Admin ID:</div>
+                  <div class="value">${adminId}</div>
+                </div>
+                <div class="credential-row">
+                  <div class="label">Temporary Password:</div>
+                  <div class="value">${tempPassword}</div>
+                </div>
+              </div>
+              
+              <div style="text-align: center;">
+                <a href="${loginUrl}" class="button">🚀 Login to Admin Panel</a>
+              </div>
+              
+              <div class="warning">
+                <strong>⚠️ IMPORTANT SECURITY NOTES:</strong>
+                <ul>
+                  <li><strong>You MUST change your password on first login</strong></li>
+                  <li>These credentials expire in <strong>${expiresIn}</strong></li>
+                  <li>Keep your Admin ID and password confidential</li>
+                  <li>Never share your credentials with anyone</li>
+                  <li>Contact your administrator if you didn't request this access</li>
+                </ul>
+              </div>
+
+              <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+                <strong>Need help?</strong> Contact your system administrator or reply to this email.
+              </p>
+            </div>
+            
+            <div class="footer">
+              <p><strong>Zeerostock Admin Panel</strong></p>
+              <p>© ${new Date().getFullYear()} Zeerostock. All rights reserved.</p>
+              <p style="margin-top: 10px;">This is an automated message. Please do not reply directly to this email.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+Hi ${name},
+
+Welcome to Zeerostock Admin Panel!
+
+Your admin account has been created. Please use the following credentials to log in:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Admin ID:           ${adminId}
+Temporary Password: ${tempPassword}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔗 Login URL: ${loginUrl}
+
+⏰ EXPIRES IN: ${expiresIn}
+
+⚠️ IMPORTANT:
+1. You MUST change your password on first login
+2. These credentials expire in ${expiresIn}
+3. Keep your credentials confidential
+4. Contact support if you didn't request this
+
+Best regards,
+Zeerostock Team
+
+© ${new Date().getFullYear()} Zeerostock. All rights reserved.
+      `.trim()
+    };
+
+    try {
+      if (!transporter.options.auth.user) {
+        // Log email in development mode
+        console.log('\n📧 ADMIN CREDENTIALS EMAIL (Development Mode):');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`To: ${email}`);
+        console.log(`Subject: ${mailOptions.subject}`);
+        console.log(mailOptions.text);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        return true;
+      }
+
+      await transporter.sendMail(mailOptions);
+      console.log(`✅ Admin credentials email sent to ${email}`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error sending admin credentials email:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Send password reset email for admin
+   */
+  async sendAdminPasswordReset({ email, name, adminId, tempPassword }) {
+    const loginUrl = process.env.ADMIN_PANEL_URL || 'http://localhost:3000/admin-panel/login';
+
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: email,
+      subject: 'Your Zeerostock Admin Password Has Been Reset',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #dc2626; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9fafb; padding: 30px; }
+            .credentials { background: white; padding: 20px; border-left: 4px solid #dc2626; margin: 20px 0; border-radius: 4px; }
+            .credential-row { margin: 15px 0; }
+            .label { font-weight: bold; color: #6b7280; font-size: 14px; }
+            .value { font-family: 'Courier New', monospace; font-size: 18px; color: #111827; background: #f3f4f6; padding: 8px 12px; border-radius: 4px; display: inline-block; margin-top: 5px; }
+            .button { display: inline-block; background: #dc2626; color: white !important; padding: 14px 32px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="margin: 0;">🔐 Password Reset</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">Zeerostock Admin Panel</p>
+            </div>
+            
+            <div class="content">
+              <p style="font-size: 16px;">Hi <strong>${name}</strong>,</p>
+              
+              <p>Your admin password has been reset by your system administrator.</p>
+              
+              <p>Here are your new temporary credentials:</p>
+              
+              <div class="credentials">
+                <div class="credential-row">
+                  <div class="label">Admin ID:</div>
+                  <div class="value">${adminId}</div>
+                </div>
+                <div class="credential-row">
+                  <div class="label">New Temporary Password:</div>
+                  <div class="value">${tempPassword}</div>
+                </div>
+              </div>
+              
+              <div style="text-align: center;">
+                <a href="${loginUrl}" class="button">🔑 Login Now</a>
+              </div>
+              
+              <p style="background: #fee2e2; padding: 15px; border-radius: 4px; border-left: 4px solid #dc2626;">
+                <strong>⚠️ Important:</strong> You will be required to change this password immediately after logging in.
+              </p>
+
+              <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+                If you didn't request this password reset, please contact your system administrator immediately.
+              </p>
+            </div>
+            
+            <div class="footer">
+              <p><strong>Zeerostock Admin Panel</strong></p>
+              <p>© ${new Date().getFullYear()} Zeerostock. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+Hi ${name},
+
+Your admin password has been reset.
+
+New Credentials:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Admin ID:           ${adminId}
+Temporary Password: ${tempPassword}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Login URL: ${loginUrl}
+
+⚠️ You will be required to change this password immediately after logging in.
+
+If you didn't request this, contact your administrator immediately.
+
+Best regards,
+Zeerostock Team
+
+© ${new Date().getFullYear()} Zeerostock. All rights reserved.
+      `.trim()
+    };
+
+    try {
+      if (!transporter.options.auth.user) {
+        console.log('\n📧 PASSWORD RESET EMAIL (Development Mode):');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`To: ${email}`);
+        console.log(`Subject: ${mailOptions.subject}`);
+        console.log(mailOptions.text);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+        return true;
+      }
+
+      await transporter.sendMail(mailOptions);
+      console.log(`✅ Password reset email sent to ${email}`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error sending password reset email:', error);
+      return false;
+    }
   }
 };
 

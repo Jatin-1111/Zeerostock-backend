@@ -4,6 +4,7 @@ const router = express.Router();
 // Controllers
 const signupController = require('../controllers/signup.controller');
 const loginController = require('../controllers/login.controller');
+const adminLoginController = require('../controllers/adminLogin.controller');
 const passwordController = require('../controllers/password.controller');
 const profileController = require('../controllers/profile.controller');
 
@@ -276,6 +277,37 @@ router.delete(
     verifyToken,
     verifyUserVerified,
     profileController.deactivateAccount
+);
+
+// ============================================
+// ADMIN AUTHENTICATION ROUTES
+// ============================================
+
+/**
+ * @swagger
+ * /auth/admin/login:
+ *   post:
+ *     summary: Admin login with Admin ID
+ *     tags: [Admin Authentication]
+ *     description: Authenticate admin using adminId and password
+ */
+router.post(
+    '/admin/login',
+    adminLoginController.adminLogin
+);
+
+/**
+ * @swagger
+ * /auth/admin/change-password:
+ *   post:
+ *     summary: Change admin password
+ *     tags: [Admin Authentication]
+ *     description: Change admin password (required on first login)
+ */
+router.post(
+    '/admin/change-password',
+    verifyToken,
+    adminLoginController.changeAdminPassword
 );
 
 module.exports = router;
