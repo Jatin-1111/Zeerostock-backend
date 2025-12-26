@@ -243,7 +243,7 @@ class OrderService {
                 tracking_number: trackingNumber,
                 user_id: userId,
                 status: 'pending',
-                payment_status: paymentMethod === 'cod' ? 'pending' : 'pending',
+                payment_status: paymentMethod === 'net-terms' ? 'pending' : paymentMethod === 'card' ? 'processing' : 'pending',
 
                 // Pricing from checkout session
                 items_subtotal: pricing.itemSubtotal,
@@ -325,18 +325,58 @@ class OrderService {
 
             await OrderItem.createBulk(orderItems);
 
-            // 9. Create initial order tracking entry
-            await supabase
-                .from('order_tracking')
-                .insert([{
+            // 9. Create all order tracking entries (5 steps)
+            const trackingSteps = [
+                {
                     id: uuidv4(),
                     order_id: createdOrder.id,
-                    status: 'pending',
+                    status: 'completed',
                     title: 'Order Placed',
                     description: 'Your order has been successfully placed and is being processed.',
                     is_milestone: true,
                     created_at: new Date().toISOString()
-                }]);
+                },
+                {
+                    id: uuidv4(),
+                    order_id: createdOrder.id,
+                    status: 'completed',
+                    title: 'Payment Secure',
+                    description: 'Payment secured successfully',
+                    is_milestone: true,
+                    created_at: new Date().toISOString()
+                },
+                {
+                    id: uuidv4(),
+                    order_id: createdOrder.id,
+                    status: 'pending',
+                    title: 'Processing',
+                    description: 'Supplier is processing your items',
+                    is_milestone: false,
+                    created_at: new Date().toISOString()
+                },
+                {
+                    id: uuidv4(),
+                    order_id: createdOrder.id,
+                    status: 'pending',
+                    title: 'Shipped',
+                    description: 'Items shipped from suppliers',
+                    is_milestone: false,
+                    created_at: new Date().toISOString()
+                },
+                {
+                    id: uuidv4(),
+                    order_id: createdOrder.id,
+                    status: 'pending',
+                    title: 'Delivered',
+                    description: 'Package at your door',
+                    is_milestone: false,
+                    created_at: new Date().toISOString()
+                }
+            ];
+
+            await supabase
+                .from('order_tracking')
+                .insert(trackingSteps);
 
             // 10. Mark checkout session as used
             await supabase
@@ -401,19 +441,35 @@ class OrderService {
 
         // TODO: Integrate with payment gateway (Razorpay, Stripe, etc.)
 
-        if (paymentMethod === 'cod') {
+        if (paymentMethod === 'net-terms') {
             return {
                 success: true,
                 transactionId: null,
-                message: 'Cash on Delivery selected'
+                message: 'Net Terms - Payment deferred as per agreement'
             };
         }
 
-        // Placeholder for online payment
+        if (paymentMethod === 'wire') {
+            return {
+                success: true,
+                transactionId: paymentDetails?.transactionId || `WIRE-${Date.now()}`,
+                message: 'Wire Transfer - Awaiting bank confirmation'
+            };
+        }
+
+        if (paymentMethod === 'escrow') {
+            return {
+                success: true,
+                transactionId: paymentDetails?.transactionId || `ESC-${Date.now()}`,
+                message: 'Escrow Payment - Funds held until delivery'
+            };
+        }
+
+        // Card payment
         return {
             success: true,
             transactionId: paymentDetails?.transactionId || `TXN-${Date.now()}`,
-            message: 'Payment processed successfully'
+            message: 'Card payment processed successfully'
         };
     }
 
@@ -435,11 +491,19 @@ class OrderService {
     static async refundPayment(order) {
         // TODO: Integrate with payment gateway refund API
 
-        if (order.payment_method === 'cod') {
+        if (order.payment_method === 'net-terms') {
             return {
                 success: true,
                 refundId: null,
-                message: 'No refund needed for COD'
+                message: 'No refund needed for Net Terms - Credit adjustment'
+            };
+        }
+
+        if (order.payment_method === 'wire' && order.payment_status === 'pending') {
+            return {
+                success: true,
+                refundId: null,
+                message: 'No refund needed - Wire transfer not yet received'
             };
         }
 

@@ -14,7 +14,7 @@ exports.requireBuyer = (req, res, next) => {
         });
     }
 
-    if (req.user.role !== 'buyer') {
+    if (req.role !== 'buyer') {
         return res.status(403).json({
             success: false,
             message: 'Access denied. Buyer role required.'
@@ -35,7 +35,7 @@ exports.requireSupplier = (req, res, next) => {
         });
     }
 
-    if (req.user.role !== 'supplier') {
+    if (req.role !== 'supplier') {
         return res.status(403).json({
             success: false,
             message: 'Access denied. Supplier role required.'
@@ -56,7 +56,7 @@ exports.requireAdmin = (req, res, next) => {
         });
     }
 
-    if (req.user.role !== 'admin') {
+    if (req.role !== 'admin') {
         return res.status(403).json({
             success: false,
             message: 'Access denied. Admin role required.'
@@ -78,7 +78,7 @@ exports.requireRoles = (...roles) => {
             });
         }
 
-        if (!roles.includes(req.user.role)) {
+        if (!roles.includes(req.role)) {
             return res.status(403).json({
                 success: false,
                 message: `Access denied. Required roles: ${roles.join(', ')}`

@@ -313,6 +313,119 @@ const deleteListing = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @route   GET /api/supplier/profile
+ * @desc    Get supplier profile with company info and business metrics
+ * @access  Private (Supplier only)
+ */
+const getProfile = asyncHandler(async (req, res) => {
+    const supplierId = req.userId;
+
+    // Get user data first
+    const userQuery = `
+        SELECT 
+            id,
+            first_name,
+            last_name,
+            company_name,
+            business_email,
+            mobile,
+            business_type,
+            created_at
+        FROM users
+        WHERE id = $1
+    `;
+
+    // Get supplier profile data (if exists)
+    const profileQuery = `
+        SELECT 
+            business_name,
+            business_type,
+            business_email,
+            business_phone,
+            product_categories,
+            rating,
+            verification_status,
+            verified_at,
+            created_at
+        FROM supplier_profiles
+        WHERE user_id = $1
+    `;
+
+    // Get total reviews count from products
+    const reviewsQuery = `
+        SELECT 
+            COUNT(*) as total_reviews,
+            AVG(r.rating) as avg_rating
+        FROM reviews r
+        JOIN products p ON r.product_id = p.id
+        WHERE p.supplier_id = $1
+    `;
+
+    // Get response rate (orders processed / total orders)
+    const responseRateQuery = `
+        SELECT 
+            COUNT(*) as total_orders,
+            COUNT(*) FILTER (WHERE oi.item_status IN ('processing', 'shipped', 'delivered')) as processed_orders
+        FROM order_items oi
+        WHERE oi.supplier_id = $1
+    `;
+
+    const [userResult, profileResult, reviewsResult, responseResult] = await Promise.all([
+        db(userQuery, [supplierId]),
+        db(profileQuery, [supplierId]),
+        db(reviewsQuery, [supplierId]),
+        db(responseRateQuery, [supplierId])
+    ]);
+
+    if (!userResult.rows || userResult.rows.length === 0) {
+        throw new AppError('User not found', 404, ERROR_CODES.RESOURCE_NOT_FOUND);
+    }
+
+    const user = userResult.rows[0];
+    const profile = profileResult.rows && profileResult.rows.length > 0 ? profileResult.rows[0] : null;
+    const reviews = reviewsResult.rows[0];
+    const response = responseResult.rows[0];
+
+    // Calculate response rate
+    const totalOrders = parseInt(response.total_orders) || 0;
+    const processedOrders = parseInt(response.processed_orders) || 0;
+    const responseRate = totalOrders > 0 ? Math.round((processedOrders / totalOrders) * 100) : 0;
+
+    // Calculate member since year
+    const memberSince = new Date(profile?.created_at || user.created_at).getFullYear();
+
+    // Format product categories as array
+    const primaryCategories = profile?.product_categories || [];
+
+    // Use profile data if exists, otherwise use user data
+    const companyName = profile?.business_name || user.company_name;
+    const businessType = profile?.business_type || user.business_type || 'Trader/ Dealer';
+    const phone = profile?.business_phone || user.mobile || '';
+    const email = profile?.business_email || user.business_email || '';
+
+    res.json({
+        success: true,
+        message: 'Profile retrieved successfully',
+        data: {
+            company_info: {
+                company_name: companyName,
+                website: companyName,
+                business_type: businessType,
+                description: `Leading ${businessType} with expertise in surplus inventory management.`,
+                phone: phone,
+                primary_categories: primaryCategories.slice(0, 3)
+            },
+            business_metrics: {
+                rating: parseFloat(reviews.avg_rating) || parseFloat(profile?.rating) || 0,
+                response_rate: responseRate,
+                total_reviews: parseInt(reviews.total_reviews) || 0,
+                member_since: memberSince
+            }
+        }
+    });
+});
+
+/**
  * @route   GET /api/supplier/dashboard/stats
  * @desc    Get supplier dashboard statistics
  * @access  Private (Supplier only)
@@ -986,6 +1099,7 @@ const getRFQById = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+    getProfile,
     getMyListings,
     getListingById,
     createListing,

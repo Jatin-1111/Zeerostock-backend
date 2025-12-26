@@ -66,7 +66,10 @@ class Order {
                     quantity,
                     final_price,
                     subtotal,
-                    item_status
+                    item_status,
+                    supplier_id,
+                    supplier_name,
+                    supplier_city
                 )
             `, { count: 'exact' })
             .eq('user_id', userId)
@@ -108,7 +111,10 @@ class Order {
                     quantity,
                     final_price,
                     subtotal,
-                    item_status
+                    item_status,
+                    supplier_id,
+                    supplier_name,
+                    supplier_city
                 )
             `, { count: 'exact' })
             .eq('user_id', userId);
@@ -136,19 +142,29 @@ class Order {
 
     /**
      * Get order with tracking info
-     * @param {string} orderId
+     * @param {string} orderIdOrNumber - Order ID (UUID) or Order number (e.g., ORD-2025-000005)
      * @param {string} userId
      * @returns {Promise<Object>}
      */
-    static async getOrderWithTracking(orderId, userId) {
-        const { data, error } = await supabase
+    static async getOrderWithTracking(orderIdOrNumber, userId) {
+        // Check if it's a UUID (contains hyphens in UUID format) or order number
+        const isUuid = orderIdOrNumber.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
+        let query = supabase
             .from('orders')
             .select(`
                 *,
                 order_items (*),
                 order_tracking (*)
-            `)
-            .eq('id', orderId)
+            `);
+
+        if (isUuid) {
+            query = query.eq('id', orderIdOrNumber);
+        } else {
+            query = query.eq('order_number', orderIdOrNumber);
+        }
+
+        const { data, error } = await query
             .eq('user_id', userId)
             .single();
 

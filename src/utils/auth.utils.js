@@ -211,9 +211,8 @@ const sanitizeUtils = {
             mobile: rest.mobile,
             companyName: rest.company_name,
             gstNumber: rest.gst_number,
-            role: rest.role,
-            roles: rest.roles || [rest.role], // Ensure roles array exists
-            activeRole: rest.active_role || rest.role,
+            roles: rest.roles || ['buyer'], // All available roles
+            activeRole: rest.active_role || rest.roles?.[0] || 'buyer', // Current active role
             businessType: rest.business_type,
             isVerified: rest.is_verified,
             isActive: rest.is_active,

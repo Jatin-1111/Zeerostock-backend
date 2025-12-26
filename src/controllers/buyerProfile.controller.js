@@ -45,7 +45,7 @@ const getBuyerProfile = async (req, res) => {
             // Business Info
             businessType: user.business_type,
             gstNumber: user.gst_number,
-            role: user.role,
+            activeRole: req.role, // Use active role from token
 
             // Account Status
             isVerified: user.is_verified,

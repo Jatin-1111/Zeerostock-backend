@@ -55,6 +55,16 @@ router.get(
 );
 
 /**
+ * @route   GET /api/buyer/savings
+ * @desc    Get buyer's cost savings analytics
+ * @access  Private (Buyer)
+ */
+router.get(
+    '/savings',
+    orderController.getCostSavings
+);
+
+/**
  * @route   GET /api/buyer/orders/export
  * @desc    Export orders to Excel/CSV
  * @access  Private (Buyer)

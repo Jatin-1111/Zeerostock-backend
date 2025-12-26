@@ -241,8 +241,13 @@ const verifyLoginOTP = asyncHandler(async (req, res) => {
     // Update last login
     await User.updateLastLogin(user.id);
 
-    // Generate tokens
-    const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, user.role);
+    // Get user's active roles
+    const UserRole = require('../models/UserRole');
+    const activeRoles = await UserRole.findActiveRoles(user.id);
+    const defaultRole = activeRoles.length > 0 ? activeRoles[0] : 'buyer';
+
+    // Generate tokens with the default active role
+    const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, defaultRole);
     const refreshToken = jwtUtils.generateRefreshToken(user.id);
 
     // Store refresh token
@@ -302,8 +307,26 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
         );
     }
 
-    // Generate new access token
-    const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, user.role);
+    // Try to get the current active role from the old access token (if provided)
+    let activeRole = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const oldAccessToken = authHeader.substring(7);
+        const oldTokenData = jwtUtils.decode(oldAccessToken);
+        if (oldTokenData && oldTokenData.role) {
+            activeRole = oldTokenData.role;
+        }
+    }
+
+    // If no role found from old token, get user's active roles and use first one
+    if (!activeRole) {
+        const UserRole = require('../models/UserRole');
+        const activeRoles = await UserRole.findActiveRoles(user.id);
+        activeRole = activeRoles.length > 0 ? activeRoles[0] : 'buyer';
+    }
+
+    // Generate new access token with the preserved active role
+    const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, activeRole);
 
     res.json({
         success: true,

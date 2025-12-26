@@ -14,6 +14,17 @@ router.use(verifyToken);
 router.use(requireRole('supplier'));
 
 // ==========================================
+// PROFILE ROUTE
+// ==========================================
+
+/**
+ * @route   GET /api/supplier/profile
+ * @desc    Get supplier profile with company info and business metrics
+ * @access  Private (Supplier)
+ */
+router.get('/profile', supplierController.getProfile);
+
+// ==========================================
 // LISTINGS ROUTES
 // ==========================================
 

@@ -122,7 +122,7 @@ const authorize = (...roles) => {
             );
         }
 
-        if (!roles.includes(req.user.role)) {
+        if (!roles.includes(req.role)) {
             throw new AppError(
                 'You do not have permission to access this resource',
                 403,

@@ -19,10 +19,10 @@ const buyerValidation = {
     }),
 
     orderIdParam: Joi.object({
-        orderId: Joi.string().uuid().required().messages({
-            'string.guid': 'Invalid order ID format'
+        orderId: Joi.string().required().messages({
+            'string.empty': 'Order ID is required'
         })
-    }),
+    }).unknown(false),
 
     cancelOrder: Joi.object({
         reason: Joi.string().min(10).max(500).required().messages({
@@ -44,8 +44,8 @@ const buyerValidation = {
         billingAddressId: Joi.string().uuid().optional().allow('', null).messages({
             'string.guid': 'Invalid billing address ID format'
         }),
-        paymentMethod: Joi.string().valid('cod', 'online', 'upi').required().messages({
-            'any.only': 'Payment method must be one of: cod, online, upi',
+        paymentMethod: Joi.string().valid('card', 'escrow', 'wire', 'net-terms').required().messages({
+            'any.only': 'Payment method must be one of: card, escrow, wire, net-terms',
             'string.empty': 'Payment method is required'
         }),
         paymentDetails: Joi.object({

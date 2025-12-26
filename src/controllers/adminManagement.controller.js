@@ -119,9 +119,13 @@ const createAdmin = asyncHandler(async (req, res) => {
         admin_id: adminId,
         first_name: firstName,
         last_name: lastName,
+        company_name: 'Zeerostock Admin', // Default company name for admin users
+        mobile: `ADMIN-${adminId}`, // Placeholder mobile for admin users
         business_email: email,
         password_hash: passwordHash,
+        business_type: 'admin', // Mark as admin type
         roles: [role],
+        active_role: role, // Set active_role to match the role
         is_first_login: true,
         credentials_expire_at: credentialsExpireAt,
         credentials_used: false,

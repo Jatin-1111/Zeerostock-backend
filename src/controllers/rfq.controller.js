@@ -32,8 +32,19 @@ exports.createRFQ = async (req, res) => {
             attachments
         } = req.body;
 
+        // Generate RFQ number
+        const timestamp = Date.now();
+        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const rfqNumber = `RFQ-${timestamp}-${random}`;
+
+        // Calculate expiry date
+        const duration = durationDays || 7;
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + duration);
+
         // Create RFQ
         const rfq = await RFQ.create({
+            rfqNumber,
             buyerId,
             title,
             categoryId,
@@ -45,31 +56,37 @@ exports.createRFQ = async (req, res) => {
             requiredByDate,
             detailedRequirements,
             preferredLocation,
-            durationDays: durationDays || 7,
+            durationDays: duration,
             attachments: attachments || [],
-            status: 'active'
+            status: 'active',
+            expiresAt: expiryDate
         });
 
-        // Fetch created RFQ with associations
-        const createdRFQ = await RFQ.findByPk(rfq.id, {
-            include: [
-                {
-                    model: Category,
-                    as: 'category',
-                    attributes: ['id', 'name']
-                },
-                {
-                    model: Industry,
-                    as: 'industry',
-                    attributes: ['id', 'name']
-                }
-            ]
-        });
+        // Manually fetch category and industry from Supabase
+        const [category, industry] = await Promise.all([
+            categoryId ? Category.findById(categoryId) : null,
+            industryId ? Industry.findById(industryId) : null
+        ]);
+
+        // Convert RFQ to plain object and add associations
+        const rfqData = rfq.toJSON();
+        if (category) {
+            rfqData.category = {
+                id: category.id,
+                name: category.name
+            };
+        }
+        if (industry) {
+            rfqData.industry = {
+                id: industry.id,
+                name: industry.name
+            };
+        }
 
         res.status(201).json({
             success: true,
             data: {
-                rfq: createdRFQ
+                rfq: rfqData
             },
             message: 'RFQ created successfully'
         });
@@ -125,25 +142,46 @@ exports.getMyRFQs = async (req, res) => {
             where,
             limit: parseInt(limit),
             offset,
-            order: [['createdAt', 'DESC']],
-            include: [
-                {
-                    model: Category,
-                    as: 'category',
-                    attributes: ['id', 'name']
-                },
-                {
-                    model: Industry,
-                    as: 'industry',
-                    attributes: ['id', 'name']
-                }
-            ]
+            order: [['createdAt', 'DESC']]
         });
+
+        console.log(`Found ${count} total RFQs, returning ${rfqs.length} items`);
+
+        // Fetch category and industry details separately
+        const enrichedRfqs = await Promise.all(rfqs.map(async (rfq) => {
+            const rfqJson = rfq.toJSON();
+
+            // Fetch category if exists
+            if (rfqJson.categoryId) {
+                try {
+                    const category = await Category.findById(rfqJson.categoryId);
+                    rfqJson.category = category ? { id: category.id, name: category.name } : null;
+                } catch (err) {
+                    console.error('Error fetching category:', err);
+                    rfqJson.category = null;
+                }
+            }
+
+            // Fetch industry if exists
+            if (rfqJson.industryId) {
+                try {
+                    const industry = await Industry.findById(rfqJson.industryId);
+                    rfqJson.industry = industry ? { id: industry.id, name: industry.name } : null;
+                } catch (err) {
+                    console.error('Error fetching industry:', err);
+                    rfqJson.industry = null;
+                }
+            }
+
+            return rfqJson;
+        }));
+
+        console.log('Enriched RFQs:', JSON.stringify(enrichedRfqs, null, 2));
 
         res.json({
             success: true,
             data: {
-                items: rfqs,
+                items: enrichedRfqs,
                 pagination: {
                     currentPage: parseInt(page),
                     totalPages: Math.ceil(count / parseInt(limit)),

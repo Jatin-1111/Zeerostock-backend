@@ -547,8 +547,7 @@ const User = {
         const { data, error } = await supabase
             .from('users')
             .select('*')
-            .contains('roles', ['admin'])
-            .or('roles.cs.{super_admin}')
+            .or('roles.cs.{admin},roles.cs.{super_admin}')
             .order('created_at', { ascending: false });
 
         if (error) throw error;
