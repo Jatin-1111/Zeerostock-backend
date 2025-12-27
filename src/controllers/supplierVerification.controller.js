@@ -1,6 +1,6 @@
 const SupplierVerification = require('../models/SupplierVerification');
 const UserRole = require('../models/UserRole');
-const { uploadToCloudinary } = require('../utils/cloudinary');
+const s3Service = require('../services/s3.service');
 const multer = require('multer');
 const { AppError, asyncHandler } = require('../middleware/error.middleware');
 
@@ -64,35 +64,70 @@ const getDraft = asyncHandler(async (req, res) => {
 
 /**
  * @route   POST /api/supplier/verification/upload
- * @desc    Upload document to Cloudinary
+ * @desc    Upload document to AWS S3
  * @access  Private
  */
 const uploadDocument = asyncHandler(async (req, res) => {
+    console.log('=== UPLOAD REQUEST RECEIVED ===');
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Body keys:', Object.keys(req.body));
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    console.log('File:', req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        encoding: req.file.encoding,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        buffer: req.file.buffer ? `Buffer(${req.file.buffer.length} bytes)` : 'No buffer'
+    } : 'No file');
+    console.log('User:', req.user ? req.user.id : 'No user');
+
     if (!req.file) {
+        console.error('ERROR: No file in request!');
         throw new AppError('No file uploaded', 400);
     }
 
     const { documentType } = req.body;
     if (!documentType) {
+        console.error('ERROR: No documentType in request!');
         throw new AppError('Document type is required', 400);
+    }
+
+    // Check if S3 is configured
+    if (!s3Service.isConfigured()) {
+        console.error('ERROR: AWS S3 is not properly configured');
+        throw new AppError('File upload service is not configured', 500);
     }
 
     const userId = req.user.id;
     const folder = `verification-documents/${userId}/${documentType}`;
 
-    // Upload to Cloudinary
-    const result = await uploadToCloudinary(
+    console.log(`Uploading to S3 bucket: ${process.env.AWS_S3_BUCKET_NAME}`);
+    console.log(`Folder: ${folder}`);
+    console.log('S3 config:', {
+        region: process.env.AWS_REGION,
+        bucket: process.env.AWS_S3_BUCKET_NAME,
+        has_access_key: !!process.env.AWS_ACCESS_KEY_ID,
+        has_secret_key: !!process.env.AWS_SECRET_ACCESS_KEY
+    });
+
+    // Upload to S3
+    const result = await s3Service.uploadFile(
         req.file.buffer,
         req.file.originalname,
+        req.file.mimetype,
         folder
     );
+
+    console.log('Upload successful:', result.url);
+    console.log('S3 file key:', result.fileKey);
 
     res.json({
         success: true,
         message: 'Document uploaded successfully',
         data: {
-            url: result.secure_url,
-            publicId: result.public_id,
+            url: result.url,
+            publicId: result.fileKey, // Keep same interface as Cloudinary
             documentType
         }
     });

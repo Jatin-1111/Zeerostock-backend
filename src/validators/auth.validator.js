@@ -39,9 +39,9 @@ const authValidation = {
             .min(2)
             .max(255)
             .trim()
-            .required()
+            .optional()
+            .allow('', null)
             .messages({
-                'string.empty': 'Company name is required',
                 'string.min': 'Company name must be at least 2 characters',
                 'string.max': 'Company name cannot exceed 255 characters'
             }),
@@ -52,7 +52,7 @@ const authValidation = {
             .trim()
             .required()
             .messages({
-                'string.empty': 'Business email is required',
+                'string.empty': 'Email is required',
                 'string.email': 'Please provide a valid email address'
             }),
 
@@ -73,10 +73,10 @@ const authValidation = {
             }),
 
         businessType: Joi.string()
-            .valid('manufacturer', 'wholesaler', 'retailer', 'distributor', 'service_provider', 'other')
-            .required()
+            .valid('manufacturer', 'wholesaler', 'retailer', 'distributor', 'service_provider', 'other', 'buyer')
+            .optional()
+            .allow('', null)
             .messages({
-                'string.empty': 'Business type is required',
                 'any.only': 'Invalid business type'
             }),
 
@@ -94,7 +94,7 @@ const authValidation = {
             .messages({
                 'any.only': 'You must accept the terms and conditions'
             })
-    }),
+    }).options({ stripUnknown: true }),
 
     // Verify OTP validation
     verifyOTP: Joi.object({

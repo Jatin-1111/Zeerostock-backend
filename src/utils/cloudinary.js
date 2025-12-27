@@ -19,14 +19,17 @@ const uploadToCloudinary = (fileBuffer, fileName, folder = 'verification-documen
         const uploadStream = cloudinary.uploader.upload_stream(
             {
                 folder: folder,
-                resource_type: 'auto',
-                public_id: `${Date.now()}-${fileName}`,
-                format: 'pdf' // Accept PDF, images, etc.
+                resource_type: 'auto', // Automatically detect file type
+                public_id: `${Date.now()}-${fileName.replace(/\.[^/.]+$/, '')}`, // Remove extension from public_id
+                type: 'upload', // Make files publicly accessible
+                // Don't force format - let Cloudinary detect it automatically
             },
             (error, result) => {
                 if (error) {
+                    console.error('Cloudinary upload error:', error);
                     reject(error);
                 } else {
+                    console.log('Cloudinary upload success:', result.secure_url);
                     resolve(result);
                 }
             }

@@ -89,23 +89,23 @@ const approveVerification = asyncHandler(async (req, res) => {
         throw new AppError('Verification request not found', 404, ERROR_CODES.NOT_FOUND);
     }
 
-    if (verification.verification_status === 'verified') {
+    if (verification.verification_status === 'approved' || verification.verification_status === 'verified') {
         throw new AppError('This supplier is already verified', 400, 'ALREADY_VERIFIED');
     }
 
-    // Update status to verified
+    // Update status to approved
     const updatedProfile = await SupplierVerification.updateStatus(
         id,
-        'verified',
-        notes || 'Supplier verification approved by admin',
-        adminId
+        'approved',
+        adminId,
+        notes || 'Supplier verification approved by admin'
     );
 
     // Add supplier role to user_roles table (or activate if exists)
     const UserRole = require('../models/UserRole');
-    await UserRole.upsert(verification.user_id, 'supplier', {
+    await UserRole.upsert(verification.userId, 'supplier', {
         is_active: true,
-        verification_status: 'verified',
+        verification_status: 'approved',
         verified_at: new Date().toISOString()
     });
 
@@ -156,8 +156,8 @@ const rejectVerification = asyncHandler(async (req, res) => {
     const updatedProfile = await SupplierVerification.updateStatus(
         id,
         'rejected',
-        reason,
-        adminId
+        adminId,
+        reason
     );
 
     // Send rejection email to supplier
@@ -202,8 +202,8 @@ const markUnderReview = asyncHandler(async (req, res) => {
     const updatedProfile = await SupplierVerification.updateStatus(
         id,
         'under_review',
-        notes || 'Verification is now under review',
-        adminId
+        adminId,
+        notes || 'Verification is now under review'
     );
 
     res.json({
@@ -426,6 +426,116 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     });
 });
 
+/**
+ * @route   GET /api/admin/verification-document
+ * @desc    Proxy to fetch verification document from AWS S3
+ * @access  Private (Admin only)
+ */
+const getVerificationDocument = asyncHandler(async (req, res) => {
+    const { url } = req.query;
+
+    if (!url) {
+        throw new AppError('Document URL is required', 400, 'VALIDATION_ERROR');
+    }
+
+    try {
+        const axios = require('axios');
+        const s3Service = require('../services/s3.service');
+
+        console.log('📄 Fetching document from:', url);
+
+        let documentUrl = url;
+
+        // Check if this is an S3 URL
+        if (url.includes('s3.amazonaws.com') || url.includes('.s3.')) {
+            console.log('🔍 Detected S3 URL');
+
+            // Extract file key from S3 URL
+            const fileKey = s3Service.extractFileKeyFromUrl(url);
+
+            if (!fileKey) {
+                console.error('❌ Failed to extract file key from URL');
+                throw new AppError('Invalid S3 URL format', 400, 'INVALID_URL');
+            }
+
+            console.log('🔑 Extracted file key:', fileKey);
+            console.log('🔧 Generating fresh presigned URL...');
+
+            try {
+                // Generate a new presigned URL valid for 1 hour
+                const presignedResult = await s3Service.getPresignedUrl(fileKey, 3600);
+                documentUrl = presignedResult.url;
+                console.log('✅ Generated presigned URL successfully');
+            } catch (s3Error) {
+                console.error('❌ S3 presigned URL generation failed:', s3Error.message);
+                console.error('S3 Error details:', s3Error);
+                throw new AppError(`Failed to generate presigned URL: ${s3Error.message}`, 500, 'S3_ERROR');
+            }
+        } else if (url.includes('cloudinary.com')) {
+            // Legacy Cloudinary support (for old documents)
+            const { cloudinary } = require('../utils/cloudinary');
+
+            console.log('☁️ Processing legacy Cloudinary document');
+
+            const urlParts = url.split('/upload/');
+            if (urlParts.length < 2) {
+                throw new AppError('Invalid Cloudinary URL format', 400, 'INVALID_URL');
+            }
+
+            let publicIdWithVersion = urlParts[1];
+
+            try {
+                documentUrl = cloudinary.url(publicIdWithVersion, {
+                    sign_url: true,
+                    type: 'upload',
+                    resource_type: 'auto'
+                });
+                console.log('✅ Generated signed URL for legacy Cloudinary resource');
+            } catch (signError) {
+                console.log('⚠️ Could not generate signed URL, using original URL:', signError.message);
+                documentUrl = url;
+            }
+        }
+
+        console.log('📡 Fetching document from URL...');
+
+        // Fetch the document
+        const response = await axios({
+            method: 'GET',
+            url: documentUrl,
+            responseType: 'stream',
+            timeout: 30000
+        });
+
+        console.log('✅ Document fetched successfully, content-type:', response.headers['content-type']);
+
+        // Set appropriate headers
+        res.setHeader('Content-Type', response.headers['content-type'] || 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+
+        // Pipe the response directly
+        response.data.pipe(res);
+    } catch (error) {
+        console.error('❌ Error fetching document:', error.message);
+        console.error('Error stack:', error.stack);
+        if (error.response) {
+            console.error('Response status:', error.response.status);
+            console.error('Response data:', error.response.data);
+        }
+
+        // Don't throw if headers already sent
+        if (!res.headersSent) {
+            throw new AppError(
+                error.message || 'Failed to retrieve document',
+                error.statusCode || 500,
+                error.errorCode || 'DOCUMENT_RETRIEVAL_ERROR'
+            );
+        }
+    }
+});
+
 module.exports = {
     getPendingVerifications,
     getVerificationDetails,
@@ -438,5 +548,7 @@ module.exports = {
     getOrderStats,
     getAllOrders,
     getOrderDetails,
-    updateOrderStatus
+    updateOrderStatus,
+    // Document management
+    getVerificationDocument
 };

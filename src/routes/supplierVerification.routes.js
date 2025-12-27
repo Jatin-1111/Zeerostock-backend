@@ -14,8 +14,8 @@ router.post('/draft', verifyToken, supplierVerificationController.saveDraft);
 // Get saved draft
 router.get('/draft', verifyToken, supplierVerificationController.getDraft);
 
-// Upload document to Cloudinary
-router.post('/upload', verifyToken, supplierVerificationController.uploadDocument);
+// Upload document to Cloudinary (multer middleware is included in the controller export)
+router.post('/upload', verifyToken, ...supplierVerificationController.uploadDocument);
 
 // Submit complete verification
 router.post('/submit', verifyToken, supplierVerificationController.submitVerification);

@@ -12,12 +12,14 @@ const {
     getOrderStats,
     getAllOrders,
     getOrderDetails,
-    updateOrderStatus
+    updateOrderStatus,
+    getVerificationDocument
 } = require('../controllers/admin.controller');
 
 // Middleware to check admin role
 const requireAdmin = (req, res, next) => {
-    if (!req.user || !req.user.roles || !req.user.roles.includes('admin')) {
+    if (!req.user || !req.user.roles ||
+        (!req.user.roles.includes('admin') && !req.user.roles.includes('super_admin'))) {
         return res.status(403).json({
             success: false,
             message: 'Access denied. Admin privileges required.',
@@ -107,6 +109,17 @@ router.post('/supplier-verifications/:id/reject', rejectVerification);
  *       - bearerAuth: []
  */
 router.post('/supplier-verifications/:id/review', markUnderReview);
+
+/**
+ * @swagger
+ * /admin/verification-document:
+ *   get:
+ *     summary: Get verification document (proxy to Cloudinary)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/verification-document', getVerificationDocument);
 
 /**
  * ORDER MANAGEMENT ROUTES

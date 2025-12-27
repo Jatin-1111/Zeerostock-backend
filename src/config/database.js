@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { Sequelize } = require('sequelize');
+const { Pool } = require('pg');
 require('dotenv').config();
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -31,6 +32,19 @@ if (isProduction && !connectionString.includes('pgbouncer=true')) {
     console.log('✓ Added pgbouncer parameters to connection string');
 }
 
+// PostgreSQL connection pool for raw queries with positional parameters
+const pool = new Pool({
+    connectionString,
+    ssl: isProduction ? {
+        require: true,
+        rejectUnauthorized: false
+    } : false,
+    max: isProduction ? 5 : 10,
+    min: 0,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 30000
+});
+
 // Sequelize instance for RFQ/Quote models
 const sequelize = new Sequelize(connectionString, {
     dialect: 'postgres',
@@ -54,6 +68,12 @@ const sequelize = new Sequelize(connectionString, {
 // Test database connection
 const testConnection = async () => {
     try {
+        // Test PostgreSQL pool
+        const client = await pool.connect();
+        await client.query('SELECT 1');
+        client.release();
+        console.log('✓ PostgreSQL pool connected successfully');
+
         // Test Supabase client
         const { data, error } = await supabase.from('users').select('count').limit(1);
         if (error && error.code !== 'PGRST116') { // PGRST116 = table doesn't exist yet
@@ -73,13 +93,10 @@ const testConnection = async () => {
     }
 };
 
-// Query method for raw SQL (uses Sequelize with PostgreSQL bind parameters)
+// Query method for raw SQL (uses PostgreSQL positional parameters $1, $2, etc.)
 const query = async (sql, params = []) => {
-    const [results, metadata] = await sequelize.query(sql, {
-        bind: params,
-        type: sequelize.QueryTypes.RAW
-    });
-    return { rows: results };
+    const result = await pool.query(sql, params);
+    return { rows: result.rows };
 };
 
 module.exports = { supabase, sequelize, testConnection, query };

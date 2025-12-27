@@ -58,11 +58,11 @@ const signup = asyncHandler(async (req, res) => {
     const user = await User.create({
         first_name: firstName,
         last_name: lastName,
-        company_name: companyName,
+        company_name: companyName || `${firstName} ${lastName}`,
         business_email: businessEmail,
         mobile: mobile,
         password_hash: passwordHash,
-        business_type: businessType,
+        business_type: businessType || 'buyer',
         gst_number: gstNumber || null,
         role: 'buyer', // Default role (legacy field)
         is_verified: false,

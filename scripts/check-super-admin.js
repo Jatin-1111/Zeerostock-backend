@@ -2,7 +2,8 @@
  * Check Super Admin Details
  */
 
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { Client } = require('pg');
 
 const databaseUrl = process.env.DATABASE_URL;

@@ -52,7 +52,8 @@ const corsOptions = {
     credentials: true,
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    ExposeHeaders: ["ETag"]
 };
 app.use(cors(corsOptions));
 
@@ -126,6 +127,22 @@ app.use('/api/quotes', quoteRoutes);
 app.use('/api/buyer/settings', settingsRoutes);
 app.use('/api/supplier/verification', supplierVerificationRoutes);
 app.use('/api/supplier', supplierRoutes);
+
+// Health check endpoint for AWS Elastic Beanstalk
+app.get('/api/health', (req, res) => {
+    res.status(200).json({
+        status: 'OK',
+        message: 'Zeerostock Backend is running',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
+
+// Alternative health check at root for EB
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
 
 // 404 handler
 app.use(notFound);

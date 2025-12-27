@@ -14,16 +14,21 @@ const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.mid
 const login = asyncHandler(async (req, res) => {
     const { identifier, password, requestedRole } = req.validatedBody;
 
+    console.log('🔐 Login attempt:', { identifier, requestedRole });
+
     // Find user by email or mobile
     const user = await User.findByEmailOrMobile(identifier);
 
     if (!user) {
+        console.log('❌ User not found:', identifier);
         throw new AppError(
             'Invalid credentials',
             401,
             ERROR_CODES.INVALID_CREDENTIALS
         );
     }
+
+    console.log('✅ User found:', { id: user.id, email: user.business_email, isVerified: user.is_verified, isActive: user.is_active });
 
     // Check if user is verified
     if (!user.is_verified) {
@@ -46,7 +51,10 @@ const login = asyncHandler(async (req, res) => {
     // Verify password
     const isPasswordValid = await passwordUtils.compare(password, user.password_hash);
 
+    console.log('🔑 Password validation:', { isPasswordValid, hasPasswordHash: !!user.password_hash });
+
     if (!isPasswordValid) {
+        console.log('❌ Invalid password for user:', user.business_email);
         throw new AppError(
             'Invalid credentials',
             401,
@@ -54,10 +62,15 @@ const login = asyncHandler(async (req, res) => {
         );
     }
 
+    console.log('✅ Password valid, fetching roles...');
+
     // Get all ACTIVE roles for this user
     const activeRoles = await UserRole.findActiveRoles(user.id);
 
+    console.log('📋 Active roles:', activeRoles);
+
     if (activeRoles.length === 0) {
+        console.log('❌ No active roles for user:', user.business_email);
         throw new AppError(
             'No active roles found for your account',
             403,
