@@ -25,35 +25,26 @@ const getWatchlist = async (req, res) => {
             const allImages = imageUrl ? [imageUrl, ...images] : images;
 
             return {
-                watchlistId: item.id,
-                productId: item.products.id,
-                title: item.products.title,
-                slug: item.products.slug,
-                image: imageUrl || allImages[0] || null,
-                images: allImages,
-
-                // Pricing
-                originalPrice: item.products.price_before,
-                currentPrice: item.products.price_after,
-                discountPercent: item.products.discount_percent,
+                id: item.id,
                 priceAtAdd: item.price_at_add,
-                priceChange: item.price_at_add ?
-                    ((item.price_at_add - item.products.price_after) / item.price_at_add * 100).toFixed(2) : 0,
-
-                // Location
-                city: item.products.city,
-                state: item.products.state,
-
-                // Product details
-                condition: item.products.condition,
-                listingType: item.products.listing_type,
-                status: item.products.status,
-                availableQuantity: item.products.quantity,
-
-                // Auction details (if applicable)
-                expiresAt: item.products.expires_at,
-
-                addedAt: item.created_at
+                createdAt: item.created_at,
+                product: {
+                    id: item.products.id,
+                    title: item.products.title,
+                    slug: item.products.slug,
+                    imageUrl: imageUrl || allImages[0] || null,
+                    galleryImages: allImages,
+                    priceBefore: item.products.price_before,
+                    priceAfter: item.products.price_after,
+                    discountPercent: item.products.discount_percent,
+                    city: item.products.city,
+                    state: item.products.state,
+                    condition: item.products.condition,
+                    listingType: item.products.listing_type,
+                    status: item.products.status,
+                    quantity: item.products.quantity,
+                    expiresAt: item.products.expires_at
+                }
             };
         });
 

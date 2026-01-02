@@ -557,4 +557,28 @@ router.post(
     supportController.rateTicket
 );
 
+// =====================================================
+// PAYMENT & INVOICE ROUTES
+// =====================================================
+
+/**
+ * @route   GET /api/buyer/payments
+ * @desc    Get buyer's payment transactions
+ * @access  Private (Buyer)
+ */
+router.get(
+    '/payments',
+    orderController.getPayments
+);
+
+/**
+ * @route   GET /api/buyer/invoices
+ * @desc    Get buyer's invoices
+ * @access  Private (Buyer)
+ */
+router.get(
+    '/invoices',
+    orderController.getInvoices
+);
+
 module.exports = router;

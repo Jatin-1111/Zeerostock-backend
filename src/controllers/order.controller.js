@@ -6,6 +6,7 @@ const PDFDocument = require('pdfkit');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const path = require('path');
+const { query: db } = require('../config/database');
 
 /**
  * Order Controllers
@@ -886,6 +887,184 @@ const getCostSavings = async (req, res) => {
     }
 };
 
+/**
+ * GET /api/buyer/payments
+ * Get buyer's payment transactions
+ */
+const getPayments = async (req, res) => {
+    try {
+        const buyerId = req.user.id;
+        const { page = 1, limit = 20, status, startDate, endDate } = req.query;
+        const offset = (page - 1) * limit;
+
+        let whereClause = 'WHERE p.buyer_id = $1';
+        const params = [buyerId];
+        let paramIndex = 2;
+
+        if (status) {
+            whereClause += ` AND p.status = $${paramIndex}`;
+            params.push(status);
+            paramIndex++;
+        }
+
+        if (startDate) {
+            whereClause += ` AND p.created_at >= $${paramIndex}`;
+            params.push(startDate);
+            paramIndex++;
+        }
+
+        if (endDate) {
+            whereClause += ` AND p.created_at <= $${paramIndex}`;
+            params.push(endDate);
+            paramIndex++;
+        }
+
+        // Get transactions
+        const transactionsQuery = `
+            SELECT 
+                p.id,
+                p.transaction_id,
+                p.order_id,
+                o.order_number,
+                p.amount,
+                p.payment_method,
+                p.payment_gateway,
+                p.status,
+                p.created_at,
+                p.updated_at,
+                u.first_name || ' ' || u.last_name as supplier_name,
+                u.company_name as supplier_company
+            FROM payments p
+            LEFT JOIN orders o ON p.order_id = o.id
+            LEFT JOIN users u ON p.supplier_id = u.id
+            ${whereClause}
+            ORDER BY p.created_at DESC
+            LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+        `;
+
+        params.push(limit, offset);
+
+        // Get summary stats
+        const summaryQuery = `
+            SELECT 
+                COUNT(*) as total_transactions,
+                SUM(amount) FILTER (WHERE status = 'completed') as total_spent,
+                SUM(amount) FILTER (WHERE status = 'pending') as pending_amount,
+                SUM(amount) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '30 days' AND status = 'completed') as spent_this_month
+            FROM payments
+            WHERE buyer_id = $1
+        `;
+
+        const [transactions, summary, count] = await Promise.all([
+            db(transactionsQuery, params),
+            db(summaryQuery, [buyerId]),
+            db(`SELECT COUNT(*) as total FROM payments p ${whereClause}`, params.slice(0, paramIndex - 1))
+        ]);
+
+        res.json({
+            success: true,
+            message: 'Payments retrieved successfully',
+            data: {
+                summary: {
+                    total_transactions: parseInt(summary.rows[0].total_transactions) || 0,
+                    total_spent: parseFloat(summary.rows[0].total_spent) || 0,
+                    pending_amount: parseFloat(summary.rows[0].pending_amount) || 0,
+                    spent_this_month: parseFloat(summary.rows[0].spent_this_month) || 0
+                },
+                transactions: transactions.rows,
+                pagination: {
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total: parseInt(count.rows[0].total),
+                    totalPages: Math.ceil(parseInt(count.rows[0].total) / limit)
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error getting payments:', error);
+        res.status(500).json({
+            success: false,
+            errorCode: 'SERVER_ERROR',
+            message: 'Failed to retrieve payments'
+        });
+    }
+};
+
+/**
+ * GET /api/buyer/invoices
+ * Get buyer's invoices
+ */
+const getInvoices = async (req, res) => {
+    try {
+        const buyerId = req.user.id;
+        const { page = 1, limit = 20, status } = req.query;
+        const offset = (page - 1) * limit;
+
+        let whereClause = 'WHERE i.buyer_id = $1';
+        const params = [buyerId];
+        let paramIndex = 2;
+
+        if (status && status !== 'all') {
+            whereClause += ` AND i.status = $${paramIndex}`;
+            params.push(status);
+            paramIndex++;
+        }
+
+        const invoicesQuery = `
+            SELECT 
+                i.id,
+                i.invoice_number,
+                i.order_id,
+                o.order_number,
+                i.amount,
+                i.tax_amount,
+                i.total_amount,
+                i.status,
+                i.issue_date,
+                i.due_date,
+                i.paid_date,
+                i.created_at,
+                u.first_name || ' ' || u.last_name as supplier_name,
+                u.company_name as supplier_company,
+                u.business_email as supplier_email
+            FROM invoices i
+            LEFT JOIN orders o ON i.order_id = o.id
+            LEFT JOIN users u ON i.supplier_id = u.id
+            ${whereClause}
+            ORDER BY i.created_at DESC
+            LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+        `;
+
+        params.push(limit, offset);
+
+        const [invoices, count] = await Promise.all([
+            db(invoicesQuery, params),
+            db(`SELECT COUNT(*) as total FROM invoices i ${whereClause}`, params.slice(0, paramIndex - 1))
+        ]);
+
+        res.json({
+            success: true,
+            message: 'Invoices retrieved successfully',
+            data: {
+                invoices: invoices.rows,
+                pagination: {
+                    page: parseInt(page),
+                    limit: parseInt(limit),
+                    total: parseInt(count.rows[0].total),
+                    totalPages: Math.ceil(parseInt(count.rows[0].total) / limit)
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error getting invoices:', error);
+        res.status(500).json({
+            success: false,
+            errorCode: 'SERVER_ERROR',
+            message: 'Failed to retrieve invoices'
+        });
+    }
+};
+
 module.exports = {
     getActiveOrders,
     getOrderHistory,
@@ -896,5 +1075,7 @@ module.exports = {
     createOrder,
     downloadInvoice,
     exportOrders,
-    getCostSavings
+    getCostSavings,
+    getPayments,
+    getInvoices
 };
