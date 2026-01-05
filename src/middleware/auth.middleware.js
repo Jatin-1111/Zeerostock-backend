@@ -75,6 +75,9 @@ const verifyToken = async (req, res, next) => {
             // Attach role information to request
             req.userRole = userRole;
             req.role = decoded.role;
+        } else if (decoded.role === 'admin' || decoded.role === 'super_admin' || decoded.role === 'temp_admin') {
+            // For admin roles, set the role from token
+            req.role = decoded.role;
         }
 
         // Attach decoded data to user object for admin routes

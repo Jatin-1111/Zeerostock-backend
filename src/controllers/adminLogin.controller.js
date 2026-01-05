@@ -297,7 +297,76 @@ const changeAdminPassword = asyncHandler(async (req, res) => {
     });
 });
 
+/**
+ * @route   GET /auth/admin/me
+ * @desc    Get current admin info from JWT token (source of truth)
+ * @access  Private (admin token required)
+ */
+const getAdminMe = asyncHandler(async (req, res) => {
+    // Get user ID from verified token (set by verifyToken middleware)
+    const userId = req.userId;
+
+    if (!userId) {
+        throw new AppError(
+            'Unauthorized',
+            401,
+            ERROR_CODES.UNAUTHORIZED
+        );
+    }
+
+    // Fetch admin from database
+    const admin = await User.findById(userId);
+
+    if (!admin) {
+        throw new AppError(
+            'Admin not found',
+            404,
+            ERROR_CODES.NOT_FOUND
+        );
+    }
+
+    // Verify user is still an admin
+    if (!admin.roles || (!admin.roles.includes('admin') && !admin.roles.includes('super_admin'))) {
+        throw new AppError(
+            'Access denied. Admin privileges required.',
+            403,
+            ERROR_CODES.FORBIDDEN
+        );
+    }
+
+    // Check if account is still active
+    if (!admin.is_active) {
+        throw new AppError(
+            'Your account has been deactivated.',
+            403,
+            ERROR_CODES.USER_INACTIVE
+        );
+    }
+
+    // Determine admin role
+    const adminRole = admin.roles.includes('super_admin') ? 'super_admin' : 'admin';
+
+    // Return admin info from database (source of truth)
+    res.json({
+        success: true,
+        data: {
+            id: admin.id,
+            adminId: admin.admin_id,
+            name: `${admin.first_name} ${admin.last_name}`,
+            firstName: admin.first_name,
+            lastName: admin.last_name,
+            email: admin.business_email,
+            role: adminRole,
+            roles: admin.roles,
+            isSuperAdmin: admin.is_super_admin || false,
+            isActive: admin.is_active,
+            lastLogin: admin.last_login
+        }
+    });
+});
+
 module.exports = {
     adminLogin,
-    changeAdminPassword
+    changeAdminPassword,
+    getAdminMe
 };

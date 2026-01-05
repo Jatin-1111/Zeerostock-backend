@@ -99,4 +99,4 @@ const query = async (sql, params = []) => {
     return { rows: result.rows };
 };
 
-module.exports = { supabase, sequelize, testConnection, query };
+module.exports = { pool, supabase, sequelize, testConnection, query };

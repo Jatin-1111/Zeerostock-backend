@@ -46,7 +46,7 @@ exports.requireSupplier = (req, res, next) => {
 };
 
 /**
- * Check if user is an admin
+ * Check if user is an admin (accepts both admin and super_admin)
  */
 exports.requireAdmin = (req, res, next) => {
     if (!req.user) {
@@ -56,7 +56,10 @@ exports.requireAdmin = (req, res, next) => {
         });
     }
 
-    if (req.role !== 'admin') {
+    // Accept both 'admin' and 'super_admin' roles
+    const isAdmin = req.role === 'admin' || req.role === 'super_admin';
+
+    if (!isAdmin) {
         return res.status(403).json({
             success: false,
             message: 'Access denied. Admin role required.'

@@ -310,4 +310,20 @@ router.post(
     adminLoginController.changeAdminPassword
 );
 
+/**
+ * @swagger
+ * /auth/admin/me:
+ *   get:
+ *     summary: Get current admin info (from JWT token)
+ *     tags: [Admin Authentication]
+ *     description: Returns admin info from database based on JWT token - source of truth for permissions
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get(
+    '/admin/me',
+    verifyToken,
+    adminLoginController.getAdminMe
+);
+
 module.exports = router;
