@@ -6,7 +6,7 @@ const PDFDocument = require('pdfkit');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const path = require('path');
-const { query: db } = require('../config/database');
+const { query: db, supabase } = require('../config/database');
 
 /**
  * Order Controllers
@@ -781,7 +781,7 @@ const getCostSavings = async (req, res) => {
         const userId = req.user.id;
 
         // Get all completed orders
-        const { data: orders, error: ordersError } = await Order.supabase
+        const { data: orders, error: ordersError } = await supabase
             .from('orders')
             .select(`
                 id,
