@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supplierController = require('../controllers/supplier.controller');
+const imageUploadController = require('../controllers/imageUpload.controller');
 const { verifyToken, requireRole } = require('../middleware/auth.middleware');
 const { validate } = require('../validators/auth.validator');
 const {
@@ -8,6 +9,7 @@ const {
     updateListingSchema,
     updateOrderItemStatusSchema
 } = require('../validators/supplier.validator');
+const { imageUploadConfig } = require('../middleware/upload.middleware');
 
 // All routes require authentication and supplier role
 router.use(verifyToken);
@@ -27,6 +29,27 @@ router.get('/profile', supplierController.getProfile);
 // ==========================================
 // LISTINGS ROUTES
 // ==========================================
+
+/**
+ * @route   POST /api/supplier/listings/upload-images
+ * @desc    Upload product images to S3
+ * @access  Private (Supplier)
+ */
+router.post(
+    '/listings/upload-images',
+    imageUploadConfig.array('images', 10),
+    imageUploadController.uploadImages
+);
+
+/**
+ * @route   DELETE /api/supplier/listings/delete-image
+ * @desc    Delete product image from S3
+ * @access  Private (Supplier)
+ */
+router.delete(
+    '/listings/delete-image',
+    imageUploadController.deleteImage
+);
 
 /**
  * @route   GET /api/supplier/listings
