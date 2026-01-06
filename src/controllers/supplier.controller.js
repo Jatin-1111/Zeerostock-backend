@@ -147,7 +147,20 @@ const createListing = asyncHandler(async (req, res) => {
         unit,
         city,
         listingType,
-        expiresAt
+        expiresAt,
+        // Technical Specification fields
+        materialType,
+        materialGrade,
+        diameterRange,
+        wallThicknessRange,
+        lengthMin,
+        lengthUnit,
+        weightPerUnit,
+        weightUnit,
+        manufacturingProcess,
+        // Compliance & Certification fields
+        certifications,
+        otherCertification
     } = req.validatedBody;
 
     // Generate slug from title
@@ -161,9 +174,13 @@ const createListing = asyncHandler(async (req, res) => {
             price_before, price_after, discount_percent,
             image_url, gallery_images, condition, quantity, unit,
             city, state, listing_type, expires_at,
-            available_quantity, min_order_quantity, status, listed_at
+            available_quantity, min_order_quantity,
+            material_type, material_grade, diameter_range, wall_thickness_range,
+            length_min, length_unit, weight_per_unit, weight_unit,
+            manufacturing_process, certifications, other_certification,
+            status, listed_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, NOW())
         RETURNING *
     `;
 
@@ -187,6 +204,17 @@ const createListing = asyncHandler(async (req, res) => {
         expiresAt,
         quantity, // available_quantity - same as quantity
         1, // min_order_quantity - default to 1
+        materialType || null,
+        materialGrade || null,
+        diameterRange || null,
+        wallThicknessRange || null,
+        lengthMin || null,
+        lengthUnit || 'meters',
+        weightPerUnit || null,
+        weightUnit || 'Kg',
+        manufacturingProcess || null,
+        certifications ? JSON.stringify(certifications) : '[]',
+        otherCertification || null,
         'active'
     ]);
 
@@ -237,12 +265,24 @@ const updateListing = asyncHandler(async (req, res) => {
         quantity: 'quantity',
         unit: 'unit',
         city: 'city',
-        state: 'state',
         listingType: 'listing_type',
         status: 'status',
         expiresAt: 'expires_at',
         availableQuantity: 'available_quantity',
-        minOrderQuantity: 'min_order_quantity'
+        minOrderQuantity: 'min_order_quantity',
+        // Technical Specification fields
+        materialType: 'material_type',
+        materialGrade: 'material_grade',
+        diameterRange: 'diameter_range',
+        wallThicknessRange: 'wall_thickness_range',
+        lengthMin: 'length_min',
+        lengthUnit: 'length_unit',
+        weightPerUnit: 'weight_per_unit',
+        weightUnit: 'weight_unit',
+        manufacturingProcess: 'manufacturing_process',
+        // Compliance & Certification fields
+        certifications: 'certifications',
+        otherCertification: 'other_certification'
     };
 
     Object.keys(updates).forEach(key => {
@@ -251,7 +291,7 @@ const updateListing = asyncHandler(async (req, res) => {
             fields.push(`${dbField} = $${paramIndex}`);
 
             // Handle JSON fields
-            if (key === 'galleryImages') {
+            if (key === 'galleryImages' || key === 'certifications') {
                 values.push(JSON.stringify(updates[key]));
             } else {
                 values.push(updates[key]);

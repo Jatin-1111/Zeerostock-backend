@@ -70,7 +70,20 @@ const createListingSchema = Joi.object({
     expiresAt: Joi.date().iso().optional().allow(null, '')
         .messages({
             'date.base': 'Invalid expiration date format'
-        })
+        }),
+    // Technical Specification fields
+    materialType: Joi.string().max(100).optional().allow(null, ''),
+    materialGrade: Joi.string().max(200).optional().allow(null, ''),
+    diameterRange: Joi.string().max(100).optional().allow(null, ''),
+    wallThicknessRange: Joi.string().max(100).optional().allow(null, ''),
+    lengthMin: Joi.string().max(50).optional().allow(null, ''),
+    lengthUnit: Joi.string().valid('meters', 'mm', 'cm', 'inches', 'feet').optional().allow(null, ''),
+    weightPerUnit: Joi.string().max(50).optional().allow(null, ''),
+    weightUnit: Joi.string().valid('Kg', 'g', 'ton', 'lbs').optional().allow(null, ''),
+    manufacturingProcess: Joi.string().max(100).optional().allow(null, ''),
+    // Compliance & Certification fields
+    certifications: Joi.array().items(Joi.string()).optional().allow(null),
+    otherCertification: Joi.string().max(255).optional().allow(null, '')
 });
 
 /**
@@ -89,12 +102,24 @@ const updateListingSchema = Joi.object({
     quantity: Joi.number().integer().positive().optional(),
     unit: Joi.string().max(50).optional(),
     city: Joi.string().max(255).optional(),
-    state: Joi.string().max(255).optional(),
     listingType: Joi.string().valid('auction', 'fixed', 'negotiable').optional(),
     status: Joi.string().valid('active', 'draft', 'sold', 'expired').optional(),
     expiresAt: Joi.date().iso().optional(),
     availableQuantity: Joi.number().integer().positive().optional(),
-    minOrderQuantity: Joi.number().integer().positive().optional()
+    minOrderQuantity: Joi.number().integer().positive().optional(),
+    // Technical Specification fields
+    materialType: Joi.string().max(100).optional().allow(null, ''),
+    materialGrade: Joi.string().max(200).optional().allow(null, ''),
+    diameterRange: Joi.string().max(100).optional().allow(null, ''),
+    wallThicknessRange: Joi.string().max(100).optional().allow(null, ''),
+    lengthMin: Joi.string().max(50).optional().allow(null, ''),
+    lengthUnit: Joi.string().valid('meters', 'mm', 'cm', 'inches', 'feet').optional().allow(null, ''),
+    weightPerUnit: Joi.string().max(50).optional().allow(null, ''),
+    weightUnit: Joi.string().valid('Kg', 'g', 'ton', 'lbs').optional().allow(null, ''),
+    manufacturingProcess: Joi.string().max(100).optional().allow(null, ''),
+    // Compliance & Certification fields
+    certifications: Joi.array().items(Joi.string()).optional().allow(null),
+    otherCertification: Joi.string().max(255).optional().allow(null, '')
 }).min(1); // At least one field must be present
 
 /**
