@@ -61,9 +61,23 @@ const errorHandler = (err, req, res, next) => {
     statusCode = statusCode || 500;
     errorCode = errorCode || ERROR_CODES.INTERNAL_SERVER_ERROR;
 
-    // Log error for debugging
+    // Enhanced logging for debugging
+    const logData = {
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        url: req.originalUrl,
+        statusCode,
+        errorCode,
+        message,
+        userId: req.userId || 'unauthenticated',
+        ip: req.ip,
+    };
+
     if (statusCode === 500) {
-        console.error('Error:', err);
+        console.error('❌ Internal Server Error:', logData);
+        console.error('Stack:', err.stack);
+    } else if (statusCode >= 400) {
+        console.warn('⚠️  Client Error:', logData);
     }
 
     // Send response
@@ -71,7 +85,10 @@ const errorHandler = (err, req, res, next) => {
         success: false,
         message: message || 'Something went wrong',
         errorCode,
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+        ...(process.env.NODE_ENV === 'development' && {
+            stack: err.stack,
+            details: logData
+        })
     });
 };
 

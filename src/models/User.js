@@ -364,14 +364,6 @@ const User = {
             throw new Error('Admin users cannot switch to other roles');
         }
 
-        // If switching to supplier, verify they have verified access
-        if (newRole === 'supplier') {
-            const access = await this.canAccessSupplierRole(userId);
-            if (!access.isVerified) {
-                throw new Error('Your supplier account is not yet verified. Please wait for admin approval.');
-            }
-        }
-
         // Check if role exists
         if (!user.roles || !user.roles.includes(newRole)) {
             throw new Error('User does not have this role');

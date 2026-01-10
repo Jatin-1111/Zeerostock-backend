@@ -35,31 +35,19 @@ const switchRole = asyncHandler(async (req, res) => {
         );
     }
 
-    // If switching to supplier, check verification status
-    if (role === 'supplier') {
-        const access = await User.canAccessSupplierRole(userId);
+    // Simple check: user must have the role in their roles array
+    const user = await User.findById(userId);
+    if (!user) {
+        throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    }
 
-        if (!access.hasRole && !access.status) {
-            throw new AppError(
-                'You have not applied for supplier access. Please submit a supplier verification request first.',
-                403,
-                'NO_SUPPLIER_REQUEST'
-            );
-        }
-
-        if (!access.isVerified) {
-            const statusMessages = {
-                pending: 'Your supplier verification is pending review. Please wait for admin approval.',
-                under_review: 'Your supplier verification is currently under review by our team.',
-                rejected: 'Your supplier verification was rejected. Please check your email for details.'
-            };
-
-            throw new AppError(
-                statusMessages[access.status] || 'You do not have verified supplier access.',
-                403,
-                'SUPPLIER_NOT_VERIFIED'
-            );
-        }
+    const userRoles = user.roles || [];
+    if (!userRoles.includes(role)) {
+        throw new AppError(
+            `You do not have access to the ${role} role. Please contact support.`,
+            403,
+            'ROLE_NOT_AVAILABLE'
+        );
     }
 
     // Switch the active role
