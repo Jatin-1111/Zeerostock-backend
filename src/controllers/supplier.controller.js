@@ -1,5 +1,6 @@
 const { query: db } = require('../config/database');
 const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.middleware');
+const { Quote, RFQ } = require('../models');
 
 /**
  * @route   GET /api/supplier/listings
@@ -569,7 +570,7 @@ const getSupplierOrders = asyncHandler(async (req, res) => {
             o.total_amount,
             o.created_at,
             o.updated_at,
-            u.first_name || ' ' || u.last_name as buyer_name,
+            CONCAT(u.first_name, ' ', u.last_name) as buyer_name,
             u.company_name as buyer_company,
             u.mobile as buyer_mobile,
             COUNT(DISTINCT oi.id) as items_count,
@@ -847,7 +848,7 @@ const getPayments = asyncHandler(async (req, res) => {
             p.status,
             p.created_at,
             p.updated_at,
-            u.first_name || ' ' || u.last_name as buyer_name,
+            CONCAT(u.first_name, ' ', u.last_name) as buyer_name,
             u.company_name as buyer_company
         FROM payments p
         LEFT JOIN orders o ON p.order_id = o.id
@@ -926,7 +927,7 @@ const getInvoices = asyncHandler(async (req, res) => {
             i.due_date,
             i.paid_date,
             i.created_at,
-            u.first_name || ' ' || u.last_name as buyer_name,
+            CONCAT(u.first_name, ' ', u.last_name) as buyer_name,
             u.company_name as buyer_company,
             u.business_email as buyer_email
         FROM invoices i
@@ -1012,7 +1013,7 @@ const getRFQs = asyncHandler(async (req, res) => {
             r.created_at,
             c.name as category_name,
             i.name as industry_name,
-            u.first_name || ' ' || u.last_name as buyer_name,
+            CONCAT(u.first_name, ' ', u.last_name) as buyer_name,
             u.company_name as buyer_company,
             u.city as buyer_city,
             u.state as buyer_state,
@@ -1088,10 +1089,10 @@ const getRFQById = asyncHandler(async (req, res) => {
             r.created_at,
             c.name as category_name,
             i.name as industry_name,
-            u.first_name || ' ' || u.last_name as buyer_name,
+            CONCAT(u.first_name, ' ', u.last_name) as buyer_name,
             u.company_name as buyer_company,
             u.business_email as buyer_email,
-            u.phone as buyer_phone,
+            u.mobile as buyer_phone,
             u.city as buyer_city,
             u.state as buyer_state,
             EXISTS(
@@ -1138,6 +1139,137 @@ const getRFQById = asyncHandler(async (req, res) => {
     });
 });
 
+/**
+ * @route   POST /api/supplier/rfqs/:id/quotes
+ * @desc    Submit a quote for an RFQ
+ * @access  Private (Supplier only)
+ */
+const submitQuote = asyncHandler(async (req, res) => {
+    const supplierId = req.userId;
+    const { id: rfqId } = req.params;
+    const { quotePrice, deliveryDays, validUntil, notes } = req.body;
+
+    // Validate required fields
+    if (!quotePrice || !deliveryDays || !validUntil) {
+        return res.status(400).json({
+            success: false,
+            message: 'Quote price, delivery days, and valid until date are required'
+        });
+    }
+
+    // Check if RFQ exists and is active using Sequelize
+    const rfq = await RFQ.findByPk(rfqId);
+
+    if (!rfq) {
+        return res.status(404).json({
+            success: false,
+            message: 'RFQ not found'
+        });
+    }
+
+    if (rfq.status !== 'active') {
+        return res.status(400).json({
+            success: false,
+            message: 'This RFQ is no longer accepting quotes'
+        });
+    }
+
+    // Check if supplier has already submitted a quote using Sequelize
+    const existingQuote = await Quote.findOne({
+        where: {
+            rfqId: rfqId,
+            supplierId: supplierId
+        }
+    });
+
+    if (existingQuote) {
+        return res.status(400).json({
+            success: false,
+            message: 'You have already submitted a quote for this RFQ'
+        });
+    }
+
+    // Generate quote number with date format (QT-YYYYMMDD-XXX)
+    const now = new Date();
+    const dateStr = now.getFullYear().toString() +
+        (now.getMonth() + 1).toString().padStart(2, '0') +
+        now.getDate().toString().padStart(2, '0');
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const quoteNumber = `QT-${dateStr}-${random}`;
+
+    // Create quote using Sequelize (this will trigger hooks for RFQ count increment)
+    const quote = await Quote.create({
+        quoteNumber,
+        rfqId,
+        supplierId,
+        buyerId: rfq.buyerId,
+        quotePrice,
+        quantity: rfq.quantity,
+        unit: rfq.unit,
+        deliveryDays,
+        validUntil,
+        notes,
+        status: 'pending'
+    });
+
+    // Get buyer and supplier details for email notification
+    const detailsQuery = `
+        SELECT 
+            u.business_email as buyer_email,
+            CONCAT(u.first_name, ' ', u.last_name) as buyer_name,
+            CONCAT(s.first_name, ' ', s.last_name) as supplier_name,
+            s.company_name as supplier_company,
+            s.business_email as supplier_email
+        FROM users u
+        CROSS JOIN users s
+        WHERE u.id = $1 AND s.id = $2
+    `;
+
+    const details = await db(detailsQuery, [rfq.buyerId, supplierId]);
+
+    if (details.rows.length > 0) {
+        const { buyer_email, buyer_name, supplier_name, supplier_company } = details.rows[0];
+
+        // Send email notification to buyer
+        const emailService = require('../services/email.service');
+
+        try {
+            await emailService.sendEmail({
+                to: buyer_email,
+                subject: `New Quote Received for RFQ: ${rfq.title}`,
+                template: 'new-quote-notification',
+                data: {
+                    buyerName: buyer_name,
+                    rfqTitle: rfq.title,
+                    rfqNumber: rfq.rfqNumber,
+                    supplierName: supplier_name,
+                    supplierCompany: supplier_company,
+                    quotePrice: `₹${parseFloat(quotePrice).toLocaleString()}`,
+                    deliveryDays: deliveryDays,
+                    validUntil: new Date(validUntil).toLocaleDateString('en-IN', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    }),
+                    notes: notes || 'No additional notes provided',
+                    viewQuoteUrl: `${process.env.FRONTEND_URL}/buyer/quotes/${quote.id}`
+                }
+            });
+        } catch (emailError) {
+            console.error('Error sending quote notification email:', emailError);
+            // Don't fail the request if email fails
+        }
+    }
+
+    res.status(201).json({
+        success: true,
+        message: 'Quote submitted successfully. The buyer has been notified.',
+        data: {
+            quote
+        }
+    });
+});
+
 module.exports = {
     getProfile,
     getMyListings,
@@ -1152,5 +1284,6 @@ module.exports = {
     getPayments,
     getInvoices,
     getRFQs,
-    getRFQById
+    getRFQById,
+    submitQuote
 };

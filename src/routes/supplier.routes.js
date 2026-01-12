@@ -170,4 +170,11 @@ router.get('/rfqs', supplierController.getRFQs);
  */
 router.get('/rfqs/:id', supplierController.getRFQById);
 
+/**
+ * @route   POST /api/supplier/rfqs/:id/quotes
+ * @desc    Submit a quote for an RFQ
+ * @access  Private (Supplier)
+ */
+router.post('/rfqs/:id/quotes', supplierController.submitQuote);
+
 module.exports = router;

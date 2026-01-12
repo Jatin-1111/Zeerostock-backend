@@ -58,7 +58,12 @@ class UserRole {
      * @returns {Promise<Object|null>} Role object or null
      */
     static async findByUserAndRole(userId, role) {
-        return this.findOne(userId, role);
+        try {
+            return await this.findOne(userId, role);
+        } catch (error) {
+            console.error(`[UserRole.findByUserAndRole] Database error for user ${userId}, role ${role}:`, error.message);
+            throw error;
+        }
     }
 
     /**

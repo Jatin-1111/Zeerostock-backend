@@ -79,18 +79,8 @@ const QuoteMessage = sequelize.define('QuoteMessage', {
 // Associations
 QuoteMessage.associate = (models) => {
     QuoteMessage.belongsTo(models.Quote, {
-        foreignKey: 'quote_id',
+        foreignKey: 'quoteId',
         as: 'quote'
-    });
-
-    QuoteMessage.belongsTo(models.User, {
-        foreignKey: 'sender_id',
-        as: 'sender'
-    });
-
-    QuoteMessage.belongsTo(models.User, {
-        foreignKey: 'receiver_id',
-        as: 'receiver'
     });
 };
 

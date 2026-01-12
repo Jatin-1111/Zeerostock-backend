@@ -40,9 +40,12 @@ const pool = new Pool({
         rejectUnauthorized: false
     } : false,
     max: isProduction ? 5 : 10,
-    min: 0,
-    idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 30000
+    min: isProduction ? 2 : 0, // Keep minimum connections alive in production
+    idleTimeoutMillis: 30000, // Increased from 10s to 30s to prevent premature disconnects
+    connectionTimeoutMillis: 30000,
+    // Enable keepalive to prevent idle connection drops
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000
 });
 
 // Sequelize instance for RFQ/Quote models
@@ -55,13 +58,17 @@ const sequelize = new Sequelize(connectionString, {
             rejectUnauthorized: false
         } : false,
         // Force IPv4 to avoid IPv6 connection issues on Render
-        family: 4
+        family: 4,
+        // Enable keepalive
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10000
     },
     pool: {
         max: isProduction ? 5 : 10,
-        min: 0,
+        min: isProduction ? 2 : 0, // Keep minimum connections alive in production
         acquire: 30000,
-        idle: 10000
+        idle: 30000, // Increased from 10s to 30s
+        evict: 60000 // Check for idle connections every 60s
     }
 });
 

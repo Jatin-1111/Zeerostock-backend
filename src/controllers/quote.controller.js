@@ -1,5 +1,10 @@
-const { Quote, QuoteMessage, RFQ, User, Product } = require('../models');
+const { Quote, QuoteMessage, RFQ } = require('../models');
+const Order = require('../models/Order');
+const OrderItem = require('../models/OrderItem');
+const Notification = require('../models/Notification');
+const User = require('../models/User');
 const { Op } = require('sequelize');
+const { supabase } = require('../config/database');
 
 /**
  * Get all quotes for the logged-in buyer
@@ -49,26 +54,7 @@ exports.getMyQuotes = async (req, res) => {
                     model: RFQ,
                     as: 'rfq',
                     where: { buyerId },
-                    attributes: ['id', 'rfqNumber', 'title', 'categoryId', 'quantity', 'status']
-                },
-                {
-                    model: User,
-                    as: 'supplier',
-                    attributes: ['id', 'firstName', 'lastName', 'email', 'companyName', 'phone']
-                },
-                {
-                    model: Product,
-                    as: 'product',
-                    required: false,
-                    attributes: ['id', 'name', 'sku', 'imageUrl']
-                },
-                {
-                    model: QuoteMessage,
-                    as: 'messages',
-                    separate: true,
-                    limit: 1,
-                    order: [['createdAt', 'DESC']],
-                    attributes: ['id', 'message', 'createdAt', 'isRead']
+                    attributes: ['id', 'rfqNumber', 'title', 'categoryId', 'quantity', 'status', 'budgetMin', 'budgetMax']
                 }
             ],
             limit: parseInt(limit),
@@ -77,9 +63,37 @@ exports.getMyQuotes = async (req, res) => {
             distinct: true
         });
 
-        // Calculate unread message count for each quote
-        const quotesWithUnread = await Promise.all(
+        // Fetch supplier and product details from Supabase
+        const quotesWithDetails = await Promise.all(
             quotes.map(async (quote) => {
+                const quoteJSON = quote.toJSON();
+
+                // Fetch supplier details
+                const { data: supplier } = await supabase
+                    .from('users')
+                    .select('id, first_name, last_name, business_email, company_name, mobile')
+                    .eq('id', quoteJSON.supplierId)
+                    .single();
+
+                // Fetch product details if productId exists
+                let product = null;
+                if (quoteJSON.productId) {
+                    const { data: productData } = await supabase
+                        .from('products')
+                        .select('id, name, sku, image_url')
+                        .eq('id', quoteJSON.productId)
+                        .single();
+                    product = productData;
+                }
+
+                // Get latest message
+                const latestMessage = await QuoteMessage.findOne({
+                    where: { quoteId: quote.id },
+                    order: [['createdAt', 'DESC']],
+                    attributes: ['id', 'message', 'createdAt', 'isRead']
+                });
+
+                // Calculate unread message count
                 const unreadCount = await QuoteMessage.count({
                     where: {
                         quoteId: quote.id,
@@ -87,8 +101,24 @@ exports.getMyQuotes = async (req, res) => {
                         isRead: false
                     }
                 });
+
                 return {
-                    ...quote.toJSON(),
+                    ...quoteJSON,
+                    supplier: supplier ? {
+                        id: supplier.id,
+                        firstName: supplier.first_name,
+                        lastName: supplier.last_name,
+                        email: supplier.business_email,
+                        companyName: supplier.company_name,
+                        phone: supplier.mobile
+                    } : null,
+                    product: product ? {
+                        id: product.id,
+                        name: product.name,
+                        sku: product.sku,
+                        imageUrl: product.image_url
+                    } : null,
+                    messages: latestMessage ? [latestMessage.toJSON()] : [],
                     unreadMessageCount: unreadCount
                 };
             })
@@ -97,7 +127,7 @@ exports.getMyQuotes = async (req, res) => {
         res.json({
             success: true,
             data: {
-                quotes: quotesWithUnread,
+                items: quotesWithDetails,
                 pagination: {
                     total,
                     page: parseInt(page),
@@ -207,6 +237,9 @@ exports.getQuoteById = async (req, res) => {
  * Accept a quote
  */
 exports.acceptQuote = async (req, res) => {
+    const { sequelize } = require('../config/database');
+    const transaction = await sequelize.transaction();
+
     try {
         const buyerId = req.user.id;
         const { id } = req.params;
@@ -221,10 +254,12 @@ exports.acceptQuote = async (req, res) => {
                     as: 'rfq',
                     where: { buyerId }
                 }
-            ]
+            ],
+            transaction
         });
 
         if (!quote) {
+            await transaction.rollback();
             return res.status(404).json({
                 success: false,
                 message: 'Quote not found or access denied'
@@ -233,6 +268,7 @@ exports.acceptQuote = async (req, res) => {
 
         // Check if quote is still valid
         if (quote.status !== 'pending') {
+            await transaction.rollback();
             return res.status(400).json({
                 success: false,
                 message: `Cannot accept quote with status: ${quote.status}`
@@ -240,61 +276,74 @@ exports.acceptQuote = async (req, res) => {
         }
 
         if (new Date(quote.validUntil) < new Date()) {
+            await transaction.rollback();
             return res.status(400).json({
                 success: false,
                 message: 'Quote has expired'
             });
         }
 
-        // Update quote status
+        // Update quote status (removed buyerNotes as it doesn't exist in schema)
         await quote.update({
             status: 'accepted',
-            acceptedAt: new Date(),
-            buyerNotes: notes
-        });
+            acceptedAt: new Date()
+        }, { transaction });
 
         // If createOrder is true, create an order
         let order = null;
         if (createOrder) {
-            const { Order, OrderItem } = require('../models');
-
-            // Create order
+            // Create order (using snake_case field names for Supabase)
             order = await Order.create({
-                buyerId,
-                supplierId: quote.supplierId,
-                quoteId: quote.id,
-                shippingAddressId,
-                subtotal: quote.quotePrice * quote.quantity,
-                tax: (quote.quotePrice * quote.quantity) * 0.1, // 10% tax
-                shippingCost: 0, // Calculate based on your logic
-                total: (quote.quotePrice * quote.quantity) * 1.1,
+                user_id: buyerId,
+                order_number: `ORD-${Date.now()}`,
                 status: 'pending',
-                paymentStatus: 'pending',
-                notes
+                payment_status: 'pending',
+                items_subtotal: quote.quotePrice * quote.quantity,
+                gst_amount: (quote.quotePrice * quote.quantity) * 0.18, // 18% GST
+                shipping_charges: 0,
+                platform_fee: 0,
+                total_amount: (quote.quotePrice * quote.quantity) * 1.18,
+                shipping_address: shippingAddressId ? { address_id: shippingAddressId } : {},
+                order_notes: notes || null
             });
 
-            // Create order item
-            await OrderItem.create({
-                orderId: order.id,
-                productId: quote.productId,
+            // Create order item using createBulk (using snake_case field names)
+            await OrderItem.createBulk([{
+                order_id: order.id,
+                product_id: quote.productId,
+                supplier_id: quote.supplierId,
+                product_title: 'Quote Product', // You might want to fetch this from products table
+                unit_price: quote.quotePrice,
+                discount_percent: 0,
+                discount_amount: 0,
+                final_price: quote.quotePrice,
                 quantity: quote.quantity,
-                unitPrice: quote.quotePrice,
-                subtotal: quote.quotePrice * quote.quantity
-            });
+                subtotal: quote.quotePrice * quote.quantity,
+                gst_percent: 18,
+                gst_amount: (quote.quotePrice * quote.quantity) * 0.18,
+                item_status: 'pending'
+            }]);
 
             // Update RFQ status to fulfilled
-            await quote.rfq.update({ status: 'fulfilled' });
+            await quote.rfq.update({ status: 'fulfilled' }, { transaction });
         }
 
-        // Send notification to supplier
-        const { Notification } = require('../models');
-        await Notification.create({
-            userId: quote.supplierId,
-            type: 'quote_accepted',
-            title: 'Quote Accepted',
-            message: `Your quote ${quote.quoteNumber} has been accepted by the buyer`,
-            data: { quoteId: quote.id, orderId: order?.id }
-        });
+        // Commit transaction before sending notification (notification is non-critical)
+        await transaction.commit();
+
+        // Send notification to supplier (outside transaction - non-critical operation)
+        try {
+            await Notification.create({
+                user_id: quote.supplierId,
+                type: 'quote_accepted',
+                title: 'Quote Accepted',
+                message: `Your quote ${quote.quoteNumber} has been accepted by the buyer`,
+                data: { quoteId: quote.id, orderId: order?.id }
+            });
+        } catch (notifError) {
+            console.error('Error sending notification:', notifError);
+            // Don't fail the request if notification fails
+        }
 
         res.json({
             success: true,
@@ -302,14 +351,14 @@ exports.acceptQuote = async (req, res) => {
             data: {
                 quote: await quote.reload({
                     include: [
-                        { model: RFQ, as: 'rfq' },
-                        { model: User, as: 'supplier', attributes: ['id', 'firstName', 'lastName', 'companyName'] }
+                        { model: RFQ, as: 'rfq' }
                     ]
                 }),
                 order
             }
         });
     } catch (error) {
+        await transaction.rollback();
         console.error('Error accepting quote:', error);
         res.status(500).json({
             success: false,
@@ -361,9 +410,8 @@ exports.rejectQuote = async (req, res) => {
         });
 
         // Send notification to supplier
-        const { Notification } = require('../models');
         await Notification.create({
-            userId: quote.supplierId,
+            user_id: quote.supplierId,
             type: 'quote_rejected',
             title: 'Quote Rejected',
             message: `Your quote ${quote.quoteNumber} has been rejected`,
@@ -430,9 +478,8 @@ exports.sendMessage = async (req, res) => {
         });
 
         // Send notification to supplier
-        const { Notification } = require('../models');
         await Notification.create({
-            userId: quote.supplierId,
+            user_id: quote.supplierId,
             type: 'quote_message',
             title: 'New Message',
             message: `You have a new message about quote ${quote.quoteNumber}`,

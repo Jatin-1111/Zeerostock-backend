@@ -143,10 +143,13 @@ const RFQ = sequelize.define('RFQ', {
     ],
     hooks: {
         beforeCreate: async (rfq) => {
-            // Generate RFQ number
-            const timestamp = Date.now();
+            // Generate RFQ number with date format (RFQ-YYYYMMDD-XXX)
+            const now = new Date();
+            const dateStr = now.getFullYear().toString() +
+                (now.getMonth() + 1).toString().padStart(2, '0') +
+                now.getDate().toString().padStart(2, '0');
             const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            rfq.rfqNumber = `RFQ-${timestamp}-${random}`;
+            rfq.rfqNumber = `RFQ-${dateStr}-${random}`;
 
             // Set expiry date based on duration
             if (rfq.durationDays && !rfq.expiresAt) {
@@ -160,23 +163,8 @@ const RFQ = sequelize.define('RFQ', {
 
 // Associations
 RFQ.associate = (models) => {
-    RFQ.belongsTo(models.User, {
-        foreignKey: 'buyer_id',
-        as: 'buyer'
-    });
-
-    RFQ.belongsTo(models.Category, {
-        foreignKey: 'category_id',
-        as: 'category'
-    });
-
-    RFQ.belongsTo(models.Industry, {
-        foreignKey: 'industry_id',
-        as: 'industry'
-    });
-
     RFQ.hasMany(models.Quote, {
-        foreignKey: 'rfq_id',
+        foreignKey: 'rfqId',
         as: 'quotes'
     });
 };

@@ -54,27 +54,43 @@ const verifyToken = async (req, res, next) => {
         // **MULTI-ROLE VALIDATION**: Verify token role matches user's active role
         // Skip this check for admin/super_admin roles (they use users.roles array)
         if (decoded.role && decoded.role !== 'admin' && decoded.role !== 'super_admin' && decoded.role !== 'temp_admin') {
-            const userRole = await UserRole.findByUserAndRole(decoded.userId, decoded.role);
+            try {
+                const userRole = await UserRole.findByUserAndRole(decoded.userId, decoded.role);
 
-            if (!userRole) {
-                throw new AppError(
-                    'Invalid role in token. Please log in again.',
-                    401,
-                    ERROR_CODES.INVALID_TOKEN
-                );
+                if (!userRole) {
+                    throw new AppError(
+                        'Invalid role in token. Please log in again.',
+                        401,
+                        ERROR_CODES.INVALID_TOKEN
+                    );
+                }
+
+                if (!userRole.is_active) {
+                    throw new AppError(
+                        `Your ${decoded.role} role is not active. Please contact support.`,
+                        403,
+                        ERROR_CODES.ROLE_INACTIVE
+                    );
+                }
+
+                // Attach role information to request
+                req.userRole = userRole;
+                req.role = decoded.role;
+            } catch (roleError) {
+                // Log the database query error for debugging
+                console.error(`[AUTH] Failed to validate role '${decoded.role}' for user ${decoded.userId}:`, roleError.message);
+
+                // Re-throw AppError as-is, wrap other errors
+                if (roleError instanceof AppError) {
+                    throw roleError;
+                } else {
+                    throw new AppError(
+                        'Failed to validate user role. Please try again.',
+                        500,
+                        ERROR_CODES.INTERNAL_ERROR
+                    );
+                }
             }
-
-            if (!userRole.is_active) {
-                throw new AppError(
-                    `Your ${decoded.role} role is not active. Please contact support.`,
-                    403,
-                    ERROR_CODES.ROLE_INACTIVE
-                );
-            }
-
-            // Attach role information to request
-            req.userRole = userRole;
-            req.role = decoded.role;
         } else if (decoded.role === 'admin' || decoded.role === 'super_admin' || decoded.role === 'temp_admin') {
             // For admin roles, set the role from token
             req.role = decoded.role;

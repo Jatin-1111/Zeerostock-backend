@@ -155,10 +155,13 @@ const Quote = sequelize.define('Quote', {
     ],
     hooks: {
         beforeCreate: async (quote) => {
-            // Generate Quote number
-            const timestamp = Date.now();
+            // Generate quote number with date format (QT-YYYYMMDD-XXX)
+            const now = new Date();
+            const dateStr = now.getFullYear().toString() +
+                (now.getMonth() + 1).toString().padStart(2, '0') +
+                now.getDate().toString().padStart(2, '0');
             const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            quote.quoteNumber = `QT-${timestamp}-${random}`;
+            quote.quoteNumber = `QT-${dateStr}-${random}`;
 
             // Calculate discount if original price is provided
             if (quote.originalPrice && quote.quotePrice) {
@@ -177,27 +180,12 @@ const Quote = sequelize.define('Quote', {
 // Associations
 Quote.associate = (models) => {
     Quote.belongsTo(models.RFQ, {
-        foreignKey: 'rfq_id',
+        foreignKey: 'rfqId',
         as: 'rfq'
     });
 
-    Quote.belongsTo(models.User, {
-        foreignKey: 'supplier_id',
-        as: 'supplier'
-    });
-
-    Quote.belongsTo(models.User, {
-        foreignKey: 'buyer_id',
-        as: 'buyer'
-    });
-
-    Quote.belongsTo(models.Product, {
-        foreignKey: 'product_id',
-        as: 'product'
-    });
-
     Quote.hasMany(models.QuoteMessage, {
-        foreignKey: 'quote_id',
+        foreignKey: 'quoteId',
         as: 'messages'
     });
 };
