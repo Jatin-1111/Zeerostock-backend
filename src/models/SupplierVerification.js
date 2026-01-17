@@ -45,6 +45,15 @@ class SupplierVerification {
    * @returns {Promise<Object>} Created verification object
    */
   static async submit(userId, data) {
+    console.log('=== Supplier Verification Submission ==>');
+    console.log('User ID:', userId);
+    console.log('Received data keys:', Object.keys(data));
+    console.log('Sample data:', {
+      legalBusinessName: data.legalBusinessName,
+      businessRegistrationNumber: data.businessRegistrationNumber,
+      bankName: data.bankName
+    });
+
     const query = `
       INSERT INTO supplier_verifications (
         user_id,
@@ -96,8 +105,31 @@ class SupplierVerification {
       data.auditReportsUrl
     ];
 
-    const result = await db(query, values);
-    return result.rows[0];
+    console.log('Values being inserted:');
+    console.log('  [0] userId:', values[0]);
+    console.log('  [1] ownerFullName:', values[1]);
+    console.log('  [2] governmentIdType:', values[2]);
+    console.log('  [6] bankName:', values[6]);
+    console.log('  [7] accountHolderName:', values[7]);
+    console.log('  [8] accountNumber:', values[8]);
+    console.log('  [11] legalBusinessName:', values[11]);
+    console.log('  [12] businessRegistrationNumber:', values[12]);
+
+    try {
+      const result = await db(query, values);
+      console.log('✅ Verification saved successfully');
+      console.log('Saved verification ID:', result.rows[0]?.id);
+      console.log('Saved data sample:', {
+        bank_name: result.rows[0]?.bank_name,
+        legal_business_name: result.rows[0]?.legal_business_name,
+        business_registration_number: result.rows[0]?.business_registration_number,
+      });
+      return result.rows[0];
+    } catch (error) {
+      console.error('❌ Error saving verification:', error.message);
+      console.error('Error details:', error);
+      throw error;
+    }
   }
 
   /**
@@ -114,7 +146,25 @@ class SupplierVerification {
       LIMIT 1
     `;
     const result = await db(query, [userId]);
-    return result.rows[0] || null;
+    const verification = result.rows[0] || null;
+
+    if (verification) {
+      console.log('=== Verification Retrieved ==>');
+      console.log('Verification ID:', verification.id);
+      console.log('Status:', verification.verification_status);
+      console.log('Has legal_business_name:', !!verification.legal_business_name);
+      console.log('Has business_registration_number:', !!verification.business_registration_number);
+      console.log('Has bank_name:', !!verification.bank_name);
+      console.log('Sample fields:', {
+        legal_business_name: verification.legal_business_name,
+        business_type: verification.business_type,
+        bank_name: verification.bank_name
+      });
+    } else {
+      console.log('No verification found for user:', userId);
+    }
+
+    return verification;
   }
 
   /**

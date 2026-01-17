@@ -188,6 +188,9 @@ const submitVerification = asyncHandler(async (req, res) => {
 const getVerificationStatus = asyncHandler(async (req, res) => {
     const userId = req.user.id;
 
+    console.log('=== Getting Verification Status ===');
+    console.log('User ID:', userId);
+
     // Get verification data
     const verification = await SupplierVerification.findByUserId(userId);
 
@@ -197,6 +200,7 @@ const getVerificationStatus = asyncHandler(async (req, res) => {
     // If no verification exists, check draft
     if (!verification) {
         const draft = await SupplierVerification.getDraft(userId);
+        console.log('No verification found, has draft:', !!draft);
         return res.json({
             success: true,
             data: {
@@ -208,6 +212,12 @@ const getVerificationStatus = asyncHandler(async (req, res) => {
             }
         });
     }
+
+    console.log('Returning verification data:');
+    console.log('  Status:', verification.verification_status);
+    console.log('  Bank Name:', verification.bank_name);
+    console.log('  Legal Business Name:', verification.legal_business_name);
+    console.log('  Business Registration Number:', verification.business_registration_number);
 
     res.json({
         success: true,
