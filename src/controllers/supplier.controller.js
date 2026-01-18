@@ -1270,6 +1270,80 @@ const submitQuote = asyncHandler(async (req, res) => {
     });
 });
 
+/**
+ * @route   GET /api/supplier/quotes
+ * @desc    Get all quotes submitted by the supplier
+ * @access  Private (Supplier only)
+ */
+const getQuotes = asyncHandler(async (req, res) => {
+    const supplierId = req.userId;
+    const { status, page = 1, limit = 50 } = req.query;
+
+    const offset = (page - 1) * limit;
+
+    // Build WHERE clause
+    let whereClause = 'WHERE q.supplier_id = $1';
+    const params = [supplierId];
+    let paramIndex = 2;
+
+    if (status && status !== 'all') {
+        whereClause += ` AND q.status = $${paramIndex}`;
+        params.push(status);
+        paramIndex++;
+    }
+
+    const quotesQuery = `
+        SELECT 
+            q.id,
+            q.quote_number,
+            q.quote_price,
+            q.delivery_days,
+            q.valid_until,
+            q.notes,
+            q.status,
+            q.created_at,
+            q.updated_at,
+            r.rfq_number,
+            r.title as product_title,
+            u.company_name as buyer_company_name,
+            u.first_name as buyer_first_name,
+            u.last_name as buyer_last_name
+        FROM quotes q
+        INNER JOIN rfqs r ON q.rfq_id = r.id
+        INNER JOIN users u ON r.buyer_id = u.id
+        ${whereClause}
+        ORDER BY q.created_at DESC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+
+    params.push(limit, offset);
+
+    const quotes = await db(quotesQuery, params);
+
+    // Get total count
+    const countQuery = `
+        SELECT COUNT(*) as total
+        FROM quotes q
+        ${whereClause}
+    `;
+    const countResult = await db(countQuery, params.slice(0, paramIndex - 1));
+    const total = parseInt(countResult.rows[0].total);
+
+    res.json({
+        success: true,
+        message: 'Quotes retrieved successfully',
+        data: {
+            quotes: quotes.rows,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        }
+    });
+});
+
 module.exports = {
     getProfile,
     getMyListings,
@@ -1285,5 +1359,6 @@ module.exports = {
     getInvoices,
     getRFQs,
     getRFQById,
-    submitQuote
+    submitQuote,
+    getQuotes
 };

@@ -210,34 +210,11 @@ exports.getMyRFQs = async (req, res) => {
  */
 exports.getRFQById = async (req, res) => {
     try {
-        const { rfqId } = req.params;
+        const { id } = req.params;
         const buyerId = req.user.id;
 
         const rfq = await RFQ.findOne({
-            where: { id: rfqId, buyerId },
-            include: [
-                {
-                    model: Category,
-                    as: 'category',
-                    attributes: ['id', 'name']
-                },
-                {
-                    model: Industry,
-                    as: 'industry',
-                    attributes: ['id', 'name']
-                },
-                {
-                    model: Quote,
-                    as: 'quotes',
-                    include: [
-                        {
-                            model: User,
-                            as: 'supplier',
-                            attributes: ['id', 'fullName', 'companyName', 'email', 'phone']
-                        }
-                    ]
-                }
-            ]
+            where: { id: id, buyerId }
         });
 
         if (!rfq) {
@@ -250,14 +227,69 @@ exports.getRFQById = async (req, res) => {
             });
         }
 
-        // Increment view count if not already viewed recently
+        // Convert to JSON and enrich with category and industry
+        const rfqJson = rfq.toJSON();
+
+        // Fetch category if exists
+        if (rfqJson.categoryId) {
+            try {
+                const category = await Category.findById(rfqJson.categoryId);
+                rfqJson.category = category ? { id: category.id, name: category.name } : null;
+            } catch (err) {
+                console.error('Error fetching category:', err);
+                rfqJson.category = null;
+            }
+        }
+
+        // Fetch industry if exists
+        if (rfqJson.industryId) {
+            try {
+                const industry = await Industry.findById(rfqJson.industryId);
+                rfqJson.industry = industry ? { id: industry.id, name: industry.name } : null;
+            } catch (err) {
+                console.error('Error fetching industry:', err);
+                rfqJson.industry = null;
+            }
+        }
+
+        // Fetch quotes separately
+        const quotes = await Quote.findAll({
+            where: { rfqId: id }
+        });
+
+        // Enrich quotes with supplier info
+        const enrichedQuotes = await Promise.all(quotes.map(async (quote) => {
+            const quoteJson = quote.toJSON();
+            if (quoteJson.supplierId) {
+                try {
+                    const supplier = await User.findById(quoteJson.supplierId);
+                    if (supplier) {
+                        quoteJson.supplier = {
+                            id: supplier.id,
+                            fullName: supplier.full_name,
+                            companyName: supplier.company_name,
+                            email: supplier.business_email,
+                            phone: supplier.mobile
+                        };
+                    } else {
+                        quoteJson.supplier = null;
+                    }
+                } catch (err) {
+                    console.error('Error fetching supplier:', err);
+                    quoteJson.supplier = null;
+                }
+            }
+            return quoteJson;
+        }));
+
+        // Increment view count
         await rfq.increment('viewCount');
 
         res.json({
             success: true,
             data: {
-                rfq,
-                quotes: rfq.quotes || []
+                rfq: rfqJson,
+                quotes: enrichedQuotes
             }
         });
     } catch (error) {
@@ -278,12 +310,12 @@ exports.getRFQById = async (req, res) => {
  */
 exports.updateRFQ = async (req, res) => {
     try {
-        const { rfqId } = req.params;
+        const { id } = req.params;
         const buyerId = req.user.id;
         const updateData = req.body;
 
         const rfq = await RFQ.findOne({
-            where: { id: rfqId, buyerId }
+            where: { id: id, buyerId }
         });
 
         if (!rfq) {
@@ -307,29 +339,85 @@ exports.updateRFQ = async (req, res) => {
             });
         }
 
+        // Check if RFQ has accepted quotes - block editing if any quote is accepted
+        const acceptedQuotes = await Quote.count({
+            where: {
+                rfqId: id,
+                status: 'accepted'
+            }
+        });
+
+        if (acceptedQuotes > 0) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    message: 'This RFQ has accepted quotes and cannot be edited. The agreement is already in progress.',
+                    code: 'RFQ_HAS_ACCEPTED_QUOTES',
+                    acceptedQuoteCount: acceptedQuotes
+                }
+            });
+        }
+
+        // Mark all pending quotes as outdated when RFQ is updated
+        const pendingQuotes = await Quote.count({
+            where: {
+                rfqId: id,
+                status: 'pending'
+            }
+        });
+
+        if (pendingQuotes > 0) {
+            // Update all pending quotes to mark them as outdated/invalidated
+            await Quote.update(
+                {
+                    notes: Quote.sequelize.fn(
+                        'CONCAT',
+                        Quote.sequelize.col('notes'),
+                        '\n\n[OUTDATED] RFQ requirements were updated on ' + new Date().toISOString() + '. This quote may no longer be valid.'
+                    )
+                },
+                {
+                    where: {
+                        rfqId: id,
+                        status: 'pending'
+                    }
+                }
+            );
+        }
+
         // Update RFQ
         await rfq.update(updateData);
 
-        // Fetch updated RFQ with associations
-        const updatedRFQ = await RFQ.findByPk(rfq.id, {
-            include: [
-                {
-                    model: Category,
-                    as: 'category',
-                    attributes: ['id', 'name']
-                },
-                {
-                    model: Industry,
-                    as: 'industry',
-                    attributes: ['id', 'name']
-                }
-            ]
-        });
+        // Fetch updated RFQ and enrich with category and industry
+        const updatedRFQ = await RFQ.findByPk(rfq.id);
+        const rfqJson = updatedRFQ.toJSON();
+
+        // Fetch category if exists
+        if (rfqJson.categoryId) {
+            try {
+                const category = await Category.findById(rfqJson.categoryId);
+                rfqJson.category = category ? { id: category.id, name: category.name } : null;
+            } catch (err) {
+                console.error('Error fetching category:', err);
+                rfqJson.category = null;
+            }
+        }
+
+        // Fetch industry if exists
+        if (rfqJson.industryId) {
+            try {
+                const industry = await Industry.findById(rfqJson.industryId);
+                rfqJson.industry = industry ? { id: industry.id, name: industry.name } : null;
+            } catch (err) {
+                console.error('Error fetching industry:', err);
+                rfqJson.industry = null;
+            }
+        }
 
         res.json({
             success: true,
             data: {
-                rfq: updatedRFQ
+                rfq: rfqJson
             },
             message: 'RFQ updated successfully'
         });
@@ -351,12 +439,12 @@ exports.updateRFQ = async (req, res) => {
  */
 exports.closeRFQ = async (req, res) => {
     try {
-        const { rfqId } = req.params;
+        const { id } = req.params;
         const buyerId = req.user.id;
         const { reason } = req.body;
 
         const rfq = await RFQ.findOne({
-            where: { id: rfqId, buyerId }
+            where: { id: id, buyerId }
         });
 
         if (!rfq) {
@@ -504,7 +592,7 @@ exports.getRFQStats = async (req, res) => {
  */
 exports.deleteRFQ = async (req, res) => {
     try {
-        const { rfqId } = req.params;
+        const { id } = req.params;
         const buyerId = req.user.id;
 
         const rfq = await RFQ.findOne({

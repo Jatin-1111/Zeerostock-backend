@@ -177,4 +177,15 @@ router.get('/rfqs/:id', supplierController.getRFQById);
  */
 router.post('/rfqs/:id/quotes', supplierController.submitQuote);
 
+// ==========================================
+// QUOTES ROUTES
+// ==========================================
+
+/**
+ * @route   GET /api/supplier/quotes
+ * @desc    Get all quotes submitted by the supplier
+ * @access  Private (Supplier)
+ */
+router.get('/quotes', supplierController.getQuotes);
+
 module.exports = router;
