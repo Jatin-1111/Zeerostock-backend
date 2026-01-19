@@ -97,3 +97,5 @@ azure-pipelines.yml
 *.cert
 .aws/
 credentials
+
+*.json
