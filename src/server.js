@@ -5,15 +5,9 @@ require('dotenv').config();
 // Start server function (only for local development)
 const startServer = async () => {
     try {
-        // Test database connection
-        console.log('🔌 Connecting to PostgreSQL (Supabase)...');
-        await testConnection();
-
-        // Test Redis connection
-        // console.log('🔌 Connecting to Redis...');
-        // await redisClient.ping();        // Start Express server
+        // Start Express server FIRST (don't block on DB)
         const PORT = process.env.PORT || 5000;
-        app.listen(PORT, () => {
+        const server = app.listen(PORT, () => {
             console.log('\n✨ Zeerostock Backend Server Started ✨');
             console.log(`🚀 Server running on port ${PORT}`);
             console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -107,6 +101,14 @@ const startServer = async () => {
             console.log('      - GET  /health');
             console.log('\n✅ Server ready to accept requests!\n');
         });
+        // Test database connection in background (non-blocking)
+        testConnection()
+            .then(() => {
+                console.log('✅ Database connection successful');
+            })
+            .catch((err) => {
+                console.error('⚠️ Database connection failed (app still running):', err.message);
+            });
     } catch (error) {
         console.error('❌ Failed to start server:', error);
         process.exit(1);

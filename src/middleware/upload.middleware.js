@@ -53,7 +53,16 @@ const getS3Folder = (req, file) => {
 const imageUploadConfig = multer({
     storage: multerS3({
         s3: s3Client,
-        bucket: process.env.AWS_S3_BUCKET_NAME,
+        bucket: (req, file, cb) => {
+            // Dynamic bucket selection based on upload type
+            if (req.baseUrl?.includes('verification')) {
+                cb(null, process.env.AWS_VERIFICATION_BUCKET_NAME);
+            } else if (req.baseUrl?.includes('products') || req.baseUrl?.includes('listings')) {
+                cb(null, process.env.AWS_PRODUCTS_BUCKET_NAME);
+            } else {
+                cb(null, process.env.AWS_ASSETS_BUCKET_NAME);
+            }
+        },
         contentType: multerS3.AUTO_CONTENT_TYPE, // Auto-detect MIME type
         metadata: (req, file, cb) => {
             cb(null, {
