@@ -4,11 +4,13 @@
  */
 
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { S3Client, GetBucketPolicyCommand, PutBucketPolicyCommand } = require('@aws-sdk/client-s3');
 
-const s3 = new AWS.S3({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const s3 = new S3Client({
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
     region: process.env.AWS_REGION || 'us-east-1'
 });
 
@@ -30,10 +32,11 @@ const bucketPolicy = {
 
 async function getCurrentPolicy() {
     try {
-        const result = await s3.getBucketPolicy({ Bucket: BUCKET_NAME }).promise();
+        const command = new GetBucketPolicyCommand({ Bucket: BUCKET_NAME });
+        const result = await s3.send(command);
         return JSON.parse(result.Policy);
     } catch (error) {
-        if (error.code === 'NoSuchBucketPolicy') {
+        if (error.name === 'NoSuchBucketPolicy') {
             return null;
         }
         throw error;
@@ -81,10 +84,11 @@ async function makePublic() {
 
         // Apply the policy
         console.log('\n🚀 Applying bucket policy...');
-        await s3.putBucketPolicy({
+        const command = new PutBucketPolicyCommand({
             Bucket: BUCKET_NAME,
             Policy: JSON.stringify(newPolicy, null, 2)
-        }).promise();
+        });
+        await s3.send(command);
 
         console.log('\n✅ Success! Category Icons folder is now publicly accessible!');
         console.log('\n📝 Applied Policy:');

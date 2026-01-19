@@ -12,47 +12,37 @@ const uploadImages = asyncHandler(async (req, res) => {
         throw new AppError('No images uploaded', 400);
     }
 
-    // Check if S3 is configured
-    if (!s3Service.isConfigured()) {
-        throw new AppError('S3 service is not configured', 500);
-    }
-
+    // Files are already uploaded to S3 by multer-s3 middleware
+    // Each file object contains: location (URL), key (S3 key), bucket, etc.
     const uploadedImages = [];
-    const errors = [];
 
-    // Upload each file to S3
+    // Process each uploaded file
     for (const file of req.files) {
         try {
-            const result = await s3Service.uploadFile(
-                file.buffer,
-                file.originalname,
-                file.mimetype,
-                'products' // Store in products folder
-            );
+            // Generate presigned URL for secure access (optional)
+            const presignedUrl = await s3Service.getPresignedUrl(file.key, 7 * 24 * 60 * 60); // 7 days
 
             uploadedImages.push({
-                url: result.url,
-                fileKey: result.fileKey,
-                originalName: file.originalname
+                url: presignedUrl.url, // Presigned URL for secure access
+                fileKey: file.key, // S3 key for future operations
+                originalName: file.originalname,
+                size: file.size,
+                mimetype: file.mimetype
             });
         } catch (error) {
-            console.error(`Error uploading ${file.originalname}:`, error);
-            errors.push({
-                file: file.originalname,
-                error: error.message
-            });
+            console.error(`Error processing ${file.originalname}:`, error);
+            // File is already in S3, just log the error for presigned URL generation
         }
     }
 
-    // Return response with uploaded images and any errors
+    // Return response with uploaded images
     res.status(200).json({
         success: true,
         message: `${uploadedImages.length} image(s) uploaded successfully`,
         data: {
             images: uploadedImages,
             uploadedCount: uploadedImages.length,
-            totalCount: req.files.length,
-            ...(errors.length > 0 && { errors })
+            totalCount: req.files.length
         }
     });
 });

@@ -10,14 +10,16 @@
  */
 
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
 
 // Configure AWS SDK
-const s3 = new AWS.S3({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const s3 = new S3Client({
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
     region: process.env.AWS_REGION || 'us-east-1'
 });
 
@@ -63,11 +65,13 @@ async function uploadFileToS3(filePath, fileName) {
     };
 
     try {
-        const result = await s3.upload(params).promise();
-        console.log(`✓ Uploaded: ${categoryName}.png -> ${result.Location}`);
+        const command = new PutObjectCommand(params);
+        const result = await s3.send(command);
+        const url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
+        console.log(`✓ Uploaded: ${categoryName}.png -> ${url}`);
         return {
             categoryName,
-            url: result.Location
+            url
         };
     } catch (error) {
         console.error(`✗ Failed to upload ${fileName}:`, error.message);

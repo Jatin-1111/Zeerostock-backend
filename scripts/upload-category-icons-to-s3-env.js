@@ -9,7 +9,7 @@
  * Option 2: Edit the credentials below and run: node scripts/upload-category-icons-to-s3-env.js
  */
 
-const AWS = require('aws-sdk');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
 
@@ -22,9 +22,11 @@ const config = {
 };
 
 // Configure AWS SDK
-const s3 = new AWS.S3({
-    accessKeyId: config.accessKeyId,
-    secretAccessKey: config.secretAccessKey,
+const s3 = new S3Client({
+    credentials: {
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey
+    },
     region: config.region
 });
 
@@ -62,51 +64,62 @@ async function uploadFileToS3(filePath, fileName) {
         Key: s3Key,
         Body: fileContent,
         ContentType: 'image/png'
-    // Removed ACL - bucket should be configured for public access via bucket policy
-    return { categoryName, url: result.Location };
+        // Removed ACL - bucket should be configured for public access via bucket policy
+    };
+
+    try {
+        const command = new PutObjectCommand(params);
+        const result = await s3.send(command);
+        const url = `https://${BUCKET_NAME}.s3.${config.region}.amazonaws.com/${s3Key}`;
+        console.log(`✓ Uploaded: ${categoryName}.png -> ${url}`);
+        return { categoryName, url };
+    } catch (error) {
+        console.error(`✗ Failed to upload ${fileName}:`, error.message);
+        throw error;
     }
+}
 
-    async function uploadAll() {
-        console.log('🚀 Uploading Category Icons to S3...\n');
+async function uploadAll() {
+    console.log('🚀 Uploading Category Icons to S3...\n');
 
-        if (!fs.existsSync(CATEGORY_ICONS_FOLDER)) {
-            console.error(`❌ Error: Folder not found at ${CATEGORY_ICONS_FOLDER}`);
-            process.exit(1);
-        }
-
-        const files = fs.readdirSync(CATEGORY_ICONS_FOLDER)
-            .filter(file => file.toLowerCase().endsWith('.png'));
-
-        if (files.length === 0) {
-            console.error('❌ No PNG files found');
-            process.exit(1);
-        }
-
-        console.log(`Found ${files.length} icons\n`);
-
-        const results = [];
-        for (const file of files) {
-            try {
-                const result = await uploadFileToS3(path.join(CATEGORY_ICONS_FOLDER, file), file);
-                results.push(result);
-            } catch (error) {
-                console.error(`✗ Failed: ${file} - ${error.message}`);
-            }
-        }
-
-        console.log('\n' + '='.repeat(70));
-        console.log('📋 COPY THIS INTO CategorySection.tsx:');
-        console.log('='.repeat(70) + '\n');
-        console.log('const categories = [');
-        results.forEach(({ categoryName, url }) => {
-            console.log(`  { name: "${categoryName}", iconUrl: "${url}" },`);
-        });
-        console.log('];\n');
-        console.log('='.repeat(70));
-        console.log(`✅ Uploaded ${results.length} icons successfully!`);
-    }
-
-    uploadAll().catch(error => {
-        console.error('❌ Error:', error.message);
+    if (!fs.existsSync(CATEGORY_ICONS_FOLDER)) {
+        console.error(`❌ Error: Folder not found at ${CATEGORY_ICONS_FOLDER}`);
         process.exit(1);
+    }
+
+    const files = fs.readdirSync(CATEGORY_ICONS_FOLDER)
+        .filter(file => file.toLowerCase().endsWith('.png'));
+
+    if (files.length === 0) {
+        console.error('❌ No PNG files found');
+        process.exit(1);
+    }
+
+    console.log(`Found ${files.length} icons\n`);
+
+    const results = [];
+    for (const file of files) {
+        try {
+            const result = await uploadFileToS3(path.join(CATEGORY_ICONS_FOLDER, file), file);
+            results.push(result);
+        } catch (error) {
+            console.error(`✗ Failed: ${file} - ${error.message}`);
+        }
+    }
+
+    console.log('\n' + '='.repeat(70));
+    console.log('📋 COPY THIS INTO CategorySection.tsx:');
+    console.log('='.repeat(70) + '\n');
+    console.log('const categories = [');
+    results.forEach(({ categoryName, url }) => {
+        console.log(`  { name: "${categoryName}", iconUrl: "${url}" },`);
     });
+    console.log('];\n');
+    console.log('='.repeat(70));
+    console.log(`✅ Uploaded ${results.length} icons successfully!`);
+}
+
+uploadAll().catch(error => {
+    console.error('❌ Error:', error.message);
+    process.exit(1);
+});

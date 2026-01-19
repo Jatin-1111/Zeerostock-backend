@@ -6,14 +6,16 @@
  */
 
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { S3Client, ListObjectsV2Command, CopyObjectCommand, DeleteObjectCommand, HeadBucketCommand, CreateBucketCommand, DeletePublicAccessBlockCommand, PutBucketPolicyCommand, PutBucketCorsCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs').promises;
 const path = require('path');
 
 // Configure AWS SDK
-const s3 = new AWS.S3({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const s3 = new S3Client({
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
     region: process.env.AWS_REGION || 'ap-south-1'
 });
 
@@ -40,7 +42,8 @@ async function listObjects(bucketName, prefix = '') {
                 params.ContinuationToken = continuationToken;
             }
 
-            const response = await s3.listObjectsV2(params).promise();
+            const command = new ListObjectsV2Command(params);
+            const response = await s3.send(command);
 
             if (response.Contents) {
                 allObjects = allObjects.concat(response.Contents);
@@ -61,11 +64,12 @@ async function listObjects(bucketName, prefix = '') {
  */
 async function copyObject(sourceKey, sourceBucket, targetBucket, targetKey) {
     try {
-        await s3.copyObject({
+        const command = new CopyObjectCommand({
             Bucket: targetBucket,
             CopySource: `${sourceBucket}/${encodeURIComponent(sourceKey)}`,
             Key: targetKey
-        }).promise();
+        });
+        await s3.send(command);
         return true;
     } catch (error) {
         console.error(`Error copying ${sourceKey}:`, error.message);
@@ -78,10 +82,11 @@ async function copyObject(sourceKey, sourceBucket, targetBucket, targetKey) {
  */
 async function deleteObject(bucketName, key) {
     try {
-        await s3.deleteObject({
+        const command = new DeleteObjectCommand({
             Bucket: bucketName,
             Key: key
-        }).promise();
+        });
+        await s3.send(command);
         return true;
     } catch (error) {
         console.error(`Error deleting ${key}:`, error.message);
@@ -94,19 +99,21 @@ async function deleteObject(bucketName, key) {
  */
 async function createBucket(bucketName) {
     try {
-        await s3.headBucket({ Bucket: bucketName }).promise();
+        const headCommand = new HeadBucketCommand({ Bucket: bucketName });
+        await s3.send(headCommand);
         console.log(`✅ Bucket '${bucketName}' already exists`);
         return true;
     } catch (error) {
-        if (error.statusCode === 404) {
+        if (error.$metadata?.httpStatusCode === 404 || error.name === 'NotFound') {
             console.log(`📦 Creating bucket '${bucketName}'...`);
             try {
-                await s3.createBucket({
+                const createCommand = new CreateBucketCommand({
                     Bucket: bucketName,
                     CreateBucketConfiguration: {
                         LocationConstraint: REGION
                     }
-                }).promise();
+                });
+                await s3.send(createCommand);
                 console.log(`✅ Bucket '${bucketName}' created successfully`);
                 return true;
             } catch (createError) {
@@ -127,7 +134,8 @@ async function makeProductsBucketPublic(bucketName) {
     console.log(`\n🔓 Configuring public access for '${bucketName}'...`);
 
     try {
-        await s3.deletePublicAccessBlock({ Bucket: bucketName }).promise();
+        const command = new DeletePublicAccessBlockCommand({ Bucket: bucketName });
+        await s3.send(command);
         console.log('✅ Public access block settings removed');
     } catch (error) {
         console.log('⚠️  Public access block:', error.message);
@@ -147,10 +155,11 @@ async function makeProductsBucketPublic(bucketName) {
     };
 
     try {
-        await s3.putBucketPolicy({
+        const policyCommand = new PutBucketPolicyCommand({
             Bucket: bucketName,
             Policy: JSON.stringify(bucketPolicy)
-        }).promise();
+        });
+        await s3.send(policyCommand);
         console.log('✅ Public read policy applied');
     } catch (error) {
         console.error('❌ Error setting bucket policy:', error.message);
@@ -169,10 +178,11 @@ async function makeProductsBucketPublic(bucketName) {
     };
 
     try {
-        await s3.putBucketCors({
+        const corsCommand = new PutBucketCorsCommand({
             Bucket: bucketName,
             CORSConfiguration: corsConfiguration
-        }).promise();
+        });
+        await s3.send(corsCommand);
         console.log('✅ CORS configuration applied');
     } catch (error) {
         console.error('❌ Error setting CORS:', error.message);

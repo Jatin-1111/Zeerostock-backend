@@ -10,14 +10,18 @@
  */
 
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
 
 // Configure AWS SDK
-const s3 = new AWS.S3({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const s3 = new S3Client({
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
     region: process.env.AWS_REGION || 'ap-south-1'
 });
 
@@ -56,11 +60,13 @@ async function uploadFileToS3(filePath, fileName) {
     };
 
     try {
-        const result = await s3.upload(params).promise();
-        console.log(`✓ Uploaded: ${fileName} -> ${result.Location}`);
+        const command = new PutObjectCommand(params);
+        const result = await s3.send(command);
+        const location = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com/${s3Key}`;
+        console.log(`✓ Uploaded: ${fileName} -> ${location}`);
         return {
             fileName,
-            url: result.Location,
+            url: location,
             key: s3Key
         };
     } catch (error) {
@@ -73,14 +79,13 @@ async function uploadFileToS3(filePath, fileName) {
  * Generate presigned URL for a file
  */
 async function generatePresignedUrl(s3Key, expiresIn = 604800) { // 7 days default
-    const params = {
+    const command = new GetObjectCommand({
         Bucket: BUCKET_NAME,
-        Key: s3Key,
-        Expires: expiresIn
-    };
+        Key: s3Key
+    });
 
     try {
-        const url = await s3.getSignedUrlPromise('getObject', params);
+        const url = await getSignedUrl(s3, command, { expiresIn });
         return url;
     } catch (error) {
         console.error(`✗ Failed to generate presigned URL for ${s3Key}:`, error.message);

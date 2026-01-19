@@ -6,12 +6,14 @@
  */
 
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { S3Client, HeadBucketCommand, CreateBucketCommand, DeletePublicAccessBlockCommand, PutBucketPolicyCommand, PutBucketCorsCommand, PutPublicAccessBlockCommand, PutBucketEncryptionCommand, ListObjectsV2Command, CopyObjectCommand } = require('@aws-sdk/client-s3');
 
 // Configure AWS SDK
-const s3 = new AWS.S3({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const s3 = new S3Client({
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
     region: process.env.AWS_REGION || 'ap-south-1'
 });
 
@@ -24,19 +26,21 @@ const VERIFICATION_BUCKET = 'zeerostock-verification-documents';
  */
 async function createBucket(bucketName) {
     try {
-        await s3.headBucket({ Bucket: bucketName }).promise();
+        const headCommand = new HeadBucketCommand({ Bucket: bucketName });
+        await s3.send(headCommand);
         console.log(`✅ Bucket '${bucketName}' already exists`);
         return true;
     } catch (error) {
-        if (error.statusCode === 404) {
+        if (error.$metadata?.httpStatusCode === 404 || error.name === 'NotFound') {
             console.log(`📦 Creating bucket '${bucketName}'...`);
             try {
-                await s3.createBucket({
+                const createCommand = new CreateBucketCommand({
                     Bucket: bucketName,
                     CreateBucketConfiguration: {
                         LocationConstraint: REGION
                     }
-                }).promise();
+                });
+                await s3.send(createCommand);
                 console.log(`✅ Bucket '${bucketName}' created successfully`);
                 return true;
             } catch (createError) {
@@ -58,7 +62,8 @@ async function makeAssetsPublic(bucketName) {
 
     try {
         // Disable Block Public Access settings
-        await s3.deletePublicAccessBlock({ Bucket: bucketName }).promise();
+        const deleteCommand = new DeletePublicAccessBlockCommand({ Bucket: bucketName });
+        await s3.send(deleteCommand);
         console.log('✅ Public access block settings removed');
     } catch (error) {
         console.log('⚠️  Public access block:', error.message);
@@ -79,10 +84,11 @@ async function makeAssetsPublic(bucketName) {
     };
 
     try {
-        await s3.putBucketPolicy({
+        const policyCommand = new PutBucketPolicyCommand({
             Bucket: bucketName,
             Policy: JSON.stringify(bucketPolicy)
-        }).promise();
+        });
+        await s3.send(policyCommand);
         console.log('✅ Public read policy applied');
     } catch (error) {
         console.error('❌ Error setting bucket policy:', error.message);
@@ -103,10 +109,11 @@ async function makeAssetsPublic(bucketName) {
     };
 
     try {
-        await s3.putBucketCors({
+        const corsCommand = new PutBucketCorsCommand({
             Bucket: bucketName,
             CORSConfiguration: corsConfiguration
-        }).promise();
+        });
+        await s3.send(corsCommand);
         console.log('✅ CORS configuration applied');
     } catch (error) {
         console.error('❌ Error setting CORS:', error.message);
@@ -121,7 +128,7 @@ async function makeVerificationPrivate(bucketName) {
 
     try {
         // Enable Block Public Access settings
-        await s3.putPublicAccessBlock({
+        const blockCommand = new PutPublicAccessBlockCommand({
             Bucket: bucketName,
             PublicAccessBlockConfiguration: {
                 BlockPublicAcls: true,
@@ -129,7 +136,8 @@ async function makeVerificationPrivate(bucketName) {
                 BlockPublicPolicy: true,
                 RestrictPublicBuckets: true
             }
-        }).promise();
+        });
+        await s3.send(blockCommand);
         console.log('✅ Public access blocked');
     } catch (error) {
         console.error('❌ Error setting public access block:', error.message);
@@ -137,7 +145,7 @@ async function makeVerificationPrivate(bucketName) {
 
     // Enable server-side encryption
     try {
-        await s3.putBucketEncryption({
+        const encryptCommand = new PutBucketEncryptionCommand({
             Bucket: bucketName,
             ServerSideEncryptionConfiguration: {
                 Rules: [{
@@ -146,7 +154,8 @@ async function makeVerificationPrivate(bucketName) {
                     }
                 }]
             }
-        }).promise();
+        });
+        await s3.send(encryptCommand);
         console.log('✅ Server-side encryption enabled');
     } catch (error) {
         console.error('❌ Error setting encryption:', error.message);
@@ -166,7 +175,8 @@ async function copyObjects(sourceBucket, sourcePrefix, targetBucket, targetPrefi
             Prefix: sourcePrefix
         };
 
-        const listedObjects = await s3.listObjectsV2(listParams).promise();
+        const listCommand = new ListObjectsV2Command(listParams);
+        const listedObjects = await s3.send(listCommand);
 
         if (!listedObjects.Contents || listedObjects.Contents.length === 0) {
             console.log('⚠️  No objects found to copy');
@@ -182,12 +192,13 @@ async function copyObjects(sourceBucket, sourcePrefix, targetBucket, targetPrefi
             const targetKey = targetPrefix ? `${targetPrefix}/${fileName}` : fileName;
 
             try {
-                await s3.copyObject({
+                const copyCommand = new CopyObjectCommand({
                     Bucket: targetBucket,
                     CopySource: `${sourceBucket}/${sourceKey}`,
                     Key: targetKey,
                     ACL: 'public-read' // For assets bucket
-                }).promise();
+                });
+                await s3.send(copyCommand);
                 console.log(`✅ Copied: ${sourceKey} → ${targetKey}`);
             } catch (error) {
                 console.error(`❌ Error copying ${sourceKey}:`, error.message);

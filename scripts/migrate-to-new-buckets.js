@@ -5,14 +5,16 @@
  */
 
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { S3Client, ListObjectsV2Command, CopyObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs').promises;
 const path = require('path');
 
 // Configure AWS SDK
-const s3 = new AWS.S3({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const s3 = new S3Client({
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
     region: process.env.AWS_REGION || 'ap-south-1'
 });
 
@@ -38,7 +40,8 @@ async function listObjects(bucketName, prefix = '') {
                 params.ContinuationToken = continuationToken;
             }
 
-            const response = await s3.listObjectsV2(params).promise();
+            const command = new ListObjectsV2Command(params);
+            const response = await s3.send(command);
 
             if (response.Contents) {
                 allObjects = allObjects.concat(response.Contents);
@@ -69,7 +72,8 @@ async function copyObject(sourceKey, sourceBucket, targetBucket, targetKey, make
         // Don't use ACL - bucket policy handles public access
         // Modern S3 buckets have ACLs disabled by default
 
-        await s3.copyObject(copyParams).promise();
+        const command = new CopyObjectCommand(copyParams);
+        await s3.send(command);
         return true;
     } catch (error) {
         console.error(`Error copying ${sourceKey}:`, error.message);

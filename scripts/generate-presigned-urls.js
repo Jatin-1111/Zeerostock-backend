@@ -5,15 +5,18 @@
  */
 
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { S3Client } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const fs = require('fs');
 const path = require('path');
 
-const s3 = new AWS.S3({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    region: process.env.AWS_REGION || 'us-east-1',
-    signatureVersion: 'v4'
+const s3 = new S3Client({
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    },
+    region: process.env.AWS_REGION || 'us-east-1'
 });
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME;
@@ -39,11 +42,11 @@ async function generatePresignedUrls() {
     for (const category of categories) {
         const key = `${S3_FOLDER_PREFIX}${category}.png`;
 
-        const url = s3.getSignedUrl('getObject', {
+        const command = new GetObjectCommand({
             Bucket: BUCKET_NAME,
-            Key: key,
-            Expires: EXPIRES_IN
+            Key: key
         });
+        const url = await getSignedUrl(s3, command, { expiresIn: EXPIRES_IN });
 
         results.push({ name: category, url });
         console.log(`✓ Generated URL for: ${category}`);
