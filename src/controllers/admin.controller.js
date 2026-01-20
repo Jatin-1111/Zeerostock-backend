@@ -93,10 +93,10 @@ const approveVerification = asyncHandler(async (req, res) => {
         throw new AppError('This supplier is already verified', 400, 'ALREADY_VERIFIED');
     }
 
-    // Update status to approved
+    // Update status to verified
     const updatedProfile = await SupplierVerification.updateStatus(
         id,
-        'approved',
+        'verified',
         adminId,
         notes || 'Supplier verification approved by admin'
     );
@@ -105,7 +105,7 @@ const approveVerification = asyncHandler(async (req, res) => {
     const UserRole = require('../models/UserRole');
     await UserRole.upsert(verification.userId, 'supplier', {
         is_active: true,
-        verification_status: 'approved',
+        verification_status: 'verified',
         verified_at: new Date().toISOString()
     });
 

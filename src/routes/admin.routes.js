@@ -18,8 +18,18 @@ const {
 
 // Middleware to check admin role
 const requireAdmin = (req, res, next) => {
-    if (!req.user || !req.user.roles ||
-        (!req.user.roles.includes('admin') && !req.user.roles.includes('super_admin'))) {
+    // Check if user has admin privileges in any of the available role properties
+    const userRoles = req.user?.roles || [];
+    const hasAdminRole =
+        userRoles.includes('admin') ||
+        userRoles.includes('super_admin') ||
+        req.role === 'admin' ||
+        req.role === 'super_admin' ||
+        req.user?.active_role === 'admin' ||
+        req.user?.active_role === 'super_admin';
+
+    if (!req.user || !hasAdminRole) {
+
         return res.status(403).json({
             success: false,
             message: 'Access denied. Admin privileges required.',

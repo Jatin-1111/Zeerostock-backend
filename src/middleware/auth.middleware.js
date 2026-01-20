@@ -1,6 +1,7 @@
 const { jwtUtils, responseUtils } = require('../utils/auth.utils');
 const { AppError, ERROR_CODES } = require('./error.middleware');
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const UserRole = require('../models/UserRole');
 
 /**
@@ -32,12 +33,35 @@ const verifyToken = async (req, res, next) => {
             );
         }
 
-        // Get user from database
-        const user = await User.findById(decoded.userId);
+        let user = null;
+        let isAdmin = false;
+
+        // Check if token belongs to an admin
+        if (decoded.role === 'admin' || decoded.role === 'super_admin' || decoded.role === 'temp_admin') {
+            user = await Admin.findById(decoded.userId);
+            isAdmin = true;
+
+            if (user) {
+                // Compatibility shim: Admin table has singular 'role', but some code expects 'roles' array
+                if (!user.roles) {
+                    user.roles = [user.role];
+                    if (user.role === 'super_admin') {
+                        if (!user.roles.includes('admin')) user.roles.push('admin');
+                    }
+                }
+                // Determine active role if not set
+                if (!user.active_role) {
+                    user.active_role = user.role;
+                }
+            }
+        } else {
+            // Regular user
+            user = await User.findById(decoded.userId);
+        }
 
         if (!user) {
             throw new AppError(
-                'User not found',
+                'User/Admin not found',
                 401,
                 ERROR_CODES.USER_NOT_FOUND
             );
@@ -45,62 +69,65 @@ const verifyToken = async (req, res, next) => {
 
         if (!user.is_active) {
             throw new AppError(
-                'User account is inactive',
+                'Account is inactive',
                 401,
                 ERROR_CODES.USER_INACTIVE
             );
         }
 
-        // **MULTI-ROLE VALIDATION**: Verify token role matches user's active role
-        // Skip this check for admin/super_admin roles (they use users.roles array)
-        if (decoded.role && decoded.role !== 'admin' && decoded.role !== 'super_admin' && decoded.role !== 'temp_admin') {
-            try {
-                const userRole = await UserRole.findByUserAndRole(decoded.userId, decoded.role);
+        // Logic for regular users (mutli-role validation)
+        if (!isAdmin) {
+            // **MULTI-ROLE VALIDATION**: Verify token role matches user's active role
+            if (decoded.role) {
+                try {
+                    const userRole = await UserRole.findByUserAndRole(decoded.userId, decoded.role);
 
-                if (!userRole) {
-                    throw new AppError(
-                        'Invalid role in token. Please log in again.',
-                        401,
-                        ERROR_CODES.INVALID_TOKEN
-                    );
-                }
+                    if (!userRole) {
+                        throw new AppError(
+                            'Invalid role in token. Please log in again.',
+                            401,
+                            ERROR_CODES.INVALID_TOKEN
+                        );
+                    }
 
-                if (!userRole.is_active) {
-                    throw new AppError(
-                        `Your ${decoded.role} role is not active. Please contact support.`,
-                        403,
-                        ERROR_CODES.ROLE_INACTIVE
-                    );
-                }
+                    if (!userRole.is_active) {
+                        throw new AppError(
+                            `Your ${decoded.role} role is not active. Please contact support.`,
+                            403,
+                            ERROR_CODES.ROLE_INACTIVE
+                        );
+                    }
 
-                // Attach role information to request
-                req.userRole = userRole;
-                req.role = decoded.role;
-            } catch (roleError) {
-                // Log the database query error for debugging
-                console.error(`[AUTH] Failed to validate role '${decoded.role}' for user ${decoded.userId}:`, roleError.message);
+                    // Attach role information to request
+                    req.userRole = userRole;
+                    req.role = decoded.role;
+                } catch (roleError) {
+                    // Log the database query error for debugging
+                    console.error(`[AUTH] Failed to validate role '${decoded.role}' for user ${decoded.userId}:`, roleError.message);
 
-                // Re-throw AppError as-is, wrap other errors
-                if (roleError instanceof AppError) {
-                    throw roleError;
-                } else {
-                    throw new AppError(
-                        'Failed to validate user role. Please try again.',
-                        500,
-                        ERROR_CODES.INTERNAL_ERROR
-                    );
+                    // Re-throw AppError as-is, wrap other errors
+                    if (roleError instanceof AppError) {
+                        throw roleError;
+                    } else {
+                        throw new AppError(
+                            'Failed to validate user role. Please try again.',
+                            500,
+                            ERROR_CODES.INTERNAL_ERROR
+                        );
+                    }
                 }
             }
-        } else if (decoded.role === 'admin' || decoded.role === 'super_admin' || decoded.role === 'temp_admin') {
+        } else {
             // For admin roles, set the role from token
             req.role = decoded.role;
         }
 
-        // Attach decoded data to user object for admin routes
+        // Attach decoded data to user object for admin routes (if present in token)
         if (decoded.isSuperAdmin !== undefined) {
             user.isSuperAdmin = decoded.isSuperAdmin;
         }
         if (decoded.roles) {
+            // If token has roles, trust them (useful for super_admin override)
             user.roles = decoded.roles;
         }
 

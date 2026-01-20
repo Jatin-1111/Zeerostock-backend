@@ -3,7 +3,7 @@
  * Handles admin-specific authentication with adminId
  */
 
-const User = require('../models/User');
+const Admin = require('../models/Admin');
 const RefreshToken = require('../models/RefreshToken');
 const { passwordUtils, jwtUtils } = require('../utils/auth.utils');
 const credentialUtils = require('../utils/credential.utils');
@@ -28,7 +28,7 @@ const adminLogin = asyncHandler(async (req, res) => {
     }
 
     // Find admin by adminId
-    const admin = await User.findByAdminId(adminId);
+    const admin = await Admin.findByAdminId(adminId);
 
     if (!admin) {
         throw new AppError(
@@ -39,7 +39,8 @@ const adminLogin = asyncHandler(async (req, res) => {
     }
 
     // Verify user is an admin
-    if (!admin.roles || (!admin.roles.includes('admin') && !admin.roles.includes('super_admin'))) {
+    // Admins table uses singular 'role'
+    if (admin.role !== 'admin' && admin.role !== 'super_admin') {
         throw new AppError(
             'Invalid credentials',
             401,
@@ -68,7 +69,7 @@ const adminLogin = asyncHandler(async (req, res) => {
             );
         } else {
             // Lock expired, unlock account
-            await User.resetFailedLoginAttempts(admin.id);
+            await Admin.resetFailedLoginAttempts(admin.id);
         }
     }
 
@@ -89,7 +90,7 @@ const adminLogin = asyncHandler(async (req, res) => {
 
     if (!isPasswordValid) {
         // Increment failed login attempts
-        await User.incrementFailedLoginAttempts(admin.id);
+        await Admin.incrementFailedLoginAttempts(admin.id);
 
         const attempts = (admin.failed_login_attempts || 0) + 1;
         const remaining = Math.max(0, 5 - attempts);
@@ -111,13 +112,13 @@ const adminLogin = asyncHandler(async (req, res) => {
 
     // Reset failed login attempts on successful login
     if (admin.failed_login_attempts > 0) {
-        await User.resetFailedLoginAttempts(admin.id);
+        await Admin.resetFailedLoginAttempts(admin.id);
     }
 
     // Check if first login (force password change)
     if (admin.is_first_login) {
         // Generate a temporary token for password change
-        const tempToken = jwtUtils.generateAccessToken(admin.id, admin.business_email, 'temp_admin');
+        const tempToken = jwtUtils.generateAccessToken(admin.id, admin.email, 'temp_admin');
 
         return res.json({
             success: true,
@@ -125,33 +126,36 @@ const adminLogin = asyncHandler(async (req, res) => {
             message: 'Please change your password to continue',
             data: {
                 tempToken,
-                adminId: admin.admin_id,
+                adminId: admin.admin_id || admin.email,
                 user: {
                     id: admin.id,
-                    name: `${admin.first_name} ${admin.last_name}`,
-                    email: admin.business_email
+                    name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim(),
+                    email: admin.email
                 }
             }
         });
     }
 
     // Update last login
-    await User.updateLastLogin(admin.id);
+    await Admin.updateLastLogin(admin.id);
 
     // Determine admin role (could be admin or super_admin)
-    const adminRole = admin.roles.includes('super_admin') ? 'super_admin' : 'admin';
+    const adminRole = admin.role;
+    const isSuperAdmin = admin.role === 'super_admin';
+    const rolesArray = isSuperAdmin ? ['super_admin', 'admin'] : ['admin'];
 
-    console.log('🔍 Admin login debug:');
-    console.log('  - admin.is_super_admin:', admin.is_super_admin);
-    console.log('  - admin.roles:', admin.roles);
-    console.log('  - adminRole:', adminRole);
+    console.log('🔍 Admin login debug:', {
+        role: admin.role,
+        isSuperAdmin,
+        rolesArray
+    });
 
     // Generate tokens with isSuperAdmin flag
     const accessToken = jwtUtils.generateAccessToken(
         admin.id,
-        admin.business_email,
+        admin.email,
         adminRole,
-        { isSuperAdmin: admin.is_super_admin || false, roles: admin.roles }
+        { isSuperAdmin, roles: rolesArray }
     );
     const refreshToken = jwtUtils.generateRefreshToken(admin.id);
 
@@ -167,13 +171,13 @@ const adminLogin = asyncHandler(async (req, res) => {
             user: {
                 id: admin.id,
                 adminId: admin.admin_id,
-                name: `${admin.first_name} ${admin.last_name}`,
+                name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim(),
                 firstName: admin.first_name,
                 lastName: admin.last_name,
-                email: admin.business_email,
+                email: admin.email,
                 role: adminRole,
-                roles: admin.roles,
-                isSuperAdmin: admin.is_super_admin || false
+                roles: rolesArray,
+                isSuperAdmin
             },
             accessToken,
             refreshToken
@@ -217,7 +221,7 @@ const changeAdminPassword = asyncHandler(async (req, res) => {
     }
 
     // Get admin from request (set by auth middleware)
-    const admin = await User.findById(req.user.id);
+    const admin = await Admin.findById(req.user.id);
 
     if (!admin) {
         throw new AppError(
@@ -252,7 +256,7 @@ const changeAdminPassword = asyncHandler(async (req, res) => {
     const newPasswordHash = await passwordUtils.hash(newPassword);
 
     // Update password and mark as not first login
-    await User.updateAdminCredentials(admin.id, {
+    await Admin.updateAdminCredentials(admin.id, {
         password_hash: newPasswordHash,
         is_first_login: false,
         credentials_used: true,
@@ -261,14 +265,16 @@ const changeAdminPassword = asyncHandler(async (req, res) => {
     });
 
     // Determine admin role
-    const adminRole = admin.roles.includes('super_admin') ? 'super_admin' : 'admin';
+    const adminRole = admin.role;
+    const isSuperAdmin = admin.role === 'super_admin';
+    const rolesArray = isSuperAdmin ? ['super_admin', 'admin'] : ['admin'];
 
     // Generate new tokens with isSuperAdmin flag
     const accessToken = jwtUtils.generateAccessToken(
         admin.id,
-        admin.business_email,
+        admin.email,
         adminRole,
-        { isSuperAdmin: admin.is_super_admin || false, roles: admin.roles }
+        { isSuperAdmin, roles: rolesArray }
     );
     const refreshToken = jwtUtils.generateRefreshToken(admin.id);
 
@@ -284,12 +290,12 @@ const changeAdminPassword = asyncHandler(async (req, res) => {
             user: {
                 id: admin.id,
                 adminId: admin.admin_id,
-                name: `${admin.first_name} ${admin.last_name}`,
+                name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim(),
                 firstName: admin.first_name,
                 lastName: admin.last_name,
-                email: admin.business_email,
+                email: admin.email,
                 role: adminRole,
-                roles: admin.roles
+                roles: rolesArray
             },
             accessToken,
             refreshToken
@@ -315,7 +321,7 @@ const getAdminMe = asyncHandler(async (req, res) => {
     }
 
     // Fetch admin from database
-    const admin = await User.findById(userId);
+    const admin = await Admin.findById(userId);
 
     if (!admin) {
         throw new AppError(
@@ -326,7 +332,7 @@ const getAdminMe = asyncHandler(async (req, res) => {
     }
 
     // Verify user is still an admin
-    if (!admin.roles || (!admin.roles.includes('admin') && !admin.roles.includes('super_admin'))) {
+    if (admin.role !== 'admin' && admin.role !== 'super_admin') {
         throw new AppError(
             'Access denied. Admin privileges required.',
             403,
@@ -344,7 +350,9 @@ const getAdminMe = asyncHandler(async (req, res) => {
     }
 
     // Determine admin role
-    const adminRole = admin.roles.includes('super_admin') ? 'super_admin' : 'admin';
+    const adminRole = admin.role;
+    const isSuperAdmin = admin.role === 'super_admin';
+    const rolesArray = isSuperAdmin ? ['super_admin', 'admin'] : ['admin'];
 
     // Return admin info from database (source of truth)
     res.json({
@@ -352,13 +360,13 @@ const getAdminMe = asyncHandler(async (req, res) => {
         data: {
             id: admin.id,
             adminId: admin.admin_id,
-            name: `${admin.first_name} ${admin.last_name}`,
+            name: `${admin.first_name || ''} ${admin.last_name || ''}`.trim(),
             firstName: admin.first_name,
             lastName: admin.last_name,
-            email: admin.business_email,
+            email: admin.email,
             role: adminRole,
-            roles: admin.roles,
-            isSuperAdmin: admin.is_super_admin || false,
+            roles: rolesArray,
+            isSuperAdmin,
             isActive: admin.is_active,
             lastLogin: admin.last_login
         }
