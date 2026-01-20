@@ -135,7 +135,7 @@ const getCategories = asyncHandler(async (req, res) => {
     } else {
         // Get all categories
         const options = { limit, includeCount };
-        categories = await Category.getTrending(limit || 50);
+        categories = await Category.getAll();
     }
 
     // Format response
