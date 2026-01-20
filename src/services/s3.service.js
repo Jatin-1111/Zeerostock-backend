@@ -73,17 +73,17 @@ class S3Service {
      * @param {string} fileKey - S3 object key
      * @returns {Promise<Object>} Deletion result
      */
-    async deleteFile(fileKey) {
+    async deleteFile(fileKey, bucket = null) {
         try {
             const command = new DeleteObjectCommand({
-                Bucket: this.bucketName,
+                Bucket: bucket || this.bucketName,
                 Key: fileKey,
             });
 
             await this.s3Client.send(command);
 
             return {
-                success: true,
+                success: true, // We successfully sent the command
                 message: 'File deleted successfully',
             };
         } catch (error) {
@@ -98,10 +98,10 @@ class S3Service {
      * @param {number} expiresIn - Expiration time in seconds (default: 1 hour)
      * @returns {Promise<Object>} Presigned URL
      */
-    async getPresignedUrl(fileKey, expiresIn = 3600) {
+    async getPresignedUrl(fileKey, expiresIn = 3600, bucket = null) {
         try {
             const command = new GetObjectCommand({
-                Bucket: this.bucketName,
+                Bucket: bucket || this.bucketName,
                 Key: fileKey,
             });
 
@@ -144,7 +144,9 @@ class S3Service {
             process.env.AWS_ACCESS_KEY_ID &&
             process.env.AWS_SECRET_ACCESS_KEY &&
             process.env.AWS_REGION &&
-            process.env.AWS_S3_BUCKET_NAME
+            (process.env.AWS_S3_BUCKET_NAME ||
+                process.env.AWS_PRODUCTS_BUCKET_NAME ||
+                process.env.AWS_ASSETS_BUCKET_NAME)
         );
     }
 }

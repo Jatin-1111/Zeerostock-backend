@@ -20,7 +20,7 @@ const uploadImages = asyncHandler(async (req, res) => {
     for (const file of req.files) {
         try {
             // Generate presigned URL for secure access (optional)
-            const presignedUrl = await s3Service.getPresignedUrl(file.key, 7 * 24 * 60 * 60); // 7 days
+            const presignedUrl = await s3Service.getPresignedUrl(file.key, 7 * 24 * 60 * 60, file.bucket); // 7 days
 
             uploadedImages.push({
                 url: presignedUrl.url, // Presigned URL for secure access
@@ -66,8 +66,18 @@ const deleteImage = asyncHandler(async (req, res) => {
     }
 
     try {
+        // Determine bucket based on fileKey prefix
+        let bucket;
+        if (fileKey.startsWith('products/')) {
+            bucket = process.env.AWS_PRODUCTS_BUCKET_NAME;
+        } else if (fileKey.startsWith('verification-documents/')) {
+            bucket = process.env.AWS_VERIFICATION_BUCKET_NAME;
+        } else {
+            bucket = process.env.AWS_ASSETS_BUCKET_NAME;
+        }
+
         // Delete from S3
-        await s3Service.deleteFile(fileKey);
+        await s3Service.deleteFile(fileKey, bucket);
 
         res.status(200).json({
             success: true,
