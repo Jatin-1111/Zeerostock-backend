@@ -512,18 +512,52 @@ const getDashboardStats = asyncHandler(async (req, res) => {
             p.price_after,
             p.views_count,
             p.watchers_count,
-            p.created_at
+            p.quantity,
+            p.created_at,
+            c.name as category_name
         FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
         WHERE p.supplier_id = $1 AND p.status = 'active'
         ORDER BY p.created_at DESC
         LIMIT 5
     `;
 
-    const [listingsStats, ordersStats, recentActivity] = await Promise.all([
+    // Get performance metrics
+    const performanceQuery = `
+        SELECT 
+            AVG(r.rating) as avg_rating,
+            COUNT(DISTINCT oi.id) as total_orders,
+            COUNT(DISTINCT oi.id) FILTER (WHERE oi.item_status IN ('processing', 'shipped', 'delivered')) as processed_orders,
+            COUNT(DISTINCT oi.id) FILTER (WHERE oi.item_status = 'delivered') as delivered_orders
+        FROM products p
+        LEFT JOIN reviews r ON p.id = r.product_id
+        LEFT JOIN order_items oi ON p.id = oi.product_id
+        WHERE p.supplier_id = $1
+    `;
+
+    // Get RFQ match count (if RFQ system exists)
+    const rfqMatchQuery = `
+        SELECT COUNT(*) as total_matches
+        FROM rfqs
+        WHERE status = 'open'
+        AND (category_id IN (SELECT DISTINCT category_id FROM products WHERE supplier_id = $1) OR category_id IS NULL)
+    `;
+
+    const [listingsStats, ordersStats, recentActivity, performance, rfqMatches] = await Promise.all([
         db(listingsStatsQuery, [supplierId]),
         db(ordersStatsQuery, [supplierId]),
-        db(recentActivityQuery, [supplierId])
+        db(recentActivityQuery, [supplierId]),
+        db(performanceQuery, [supplierId]),
+        db(rfqMatchQuery, [supplierId]).catch(() => ({ rows: [{ total_matches: 0 }] }))
     ]);
+
+    // Calculate performance metrics
+    const totalOrders = parseInt(performance.rows[0].total_orders) || 0;
+    const processedOrders = parseInt(performance.rows[0].processed_orders) || 0;
+    const deliveredOrders = parseInt(performance.rows[0].delivered_orders) || 0;
+
+    const responseRate = totalOrders > 0 ? Math.round((processedOrders / totalOrders) * 100) : null;
+    const onTimeDelivery = totalOrders > 0 ? Math.round((deliveredOrders / totalOrders) * 100) : null;
 
     res.json({
         success: true,
@@ -531,7 +565,16 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         data: {
             listings: listingsStats.rows[0],
             orders: ordersStats.rows[0],
-            recentActivity: recentActivity.rows
+            recentActivity: recentActivity.rows,
+            rfqMatches: {
+                totalMatches: parseInt(rfqMatches.rows[0].total_matches) || 0
+            },
+            performance: {
+                rating: parseFloat(performance.rows[0].avg_rating) || null,
+                responseRate,
+                onTimeDelivery,
+                quoteWinRate: null // TODO: Calculate from quotes table when implemented
+            }
         }
     });
 });
