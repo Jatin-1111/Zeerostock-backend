@@ -31,6 +31,11 @@ const { errorHandler, notFound } = require('./middleware/error.middleware');
 // Initialize Express app
 const app = express();
 
+// Trust proxy - required for ALB to work correctly with X-Forwarded headers
+if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+}
+
 // Security middleware
 app.use(helmet({
     contentSecurityPolicy: {
