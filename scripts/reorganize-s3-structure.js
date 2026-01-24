@@ -2,7 +2,7 @@
  * Reorganize S3 bucket structure:
  * 1. Move all files in zeerostock-assets to Assets/ folder
  * 2. Copy Category Icons folder to zeerostock-assets
- * 3. Rename zeerostock-documents to zeerostock-products (for product images only)
+ * 3. Rename zeerostock-documents to zeerostock-productionucts (for product images only)
  */
 
 require('dotenv').config();
@@ -21,7 +21,7 @@ const s3 = new S3Client({
 
 const ASSETS_BUCKET = 'zeerostock-assets';
 const OLD_BUCKET = 'zeerostock-documents';
-const PRODUCTS_BUCKET = 'zeerostock-products';
+const PRODUCTS_BUCKET = 'zeerostock-productionucts';
 const REGION = process.env.AWS_REGION || 'ap-south-1';
 
 /**
@@ -275,15 +275,15 @@ async function copyCategoryIcons() {
 }
 
 /**
- * Step 3: Create zeerostock-products bucket and configure
+ * Step 3: Create zeerostock-productionucts bucket and configure
  */
 async function createProductsBucket() {
-    console.log('\n📦 STEP 3: Creating zeerostock-products bucket');
+    console.log('\n📦 STEP 3: Creating zeerostock-productionucts bucket');
     console.log('─────────────────────────────────────────────────');
     console.log('⚠️  Note: You will need to manually rename zeerostock-documents');
-    console.log('    to zeerostock-products in AWS Console, or use AWS CLI:');
-    console.log('    aws s3 mb s3://zeerostock-products --region ap-south-1');
-    console.log('    aws s3 sync s3://zeerostock-documents s3://zeerostock-products');
+    console.log('    to zeerostock-productionucts in AWS Console, or use AWS CLI:');
+    console.log('    aws s3 mb s3://zeerostock-productionucts --region ap-south-1');
+    console.log('    aws s3 sync s3://zeerostock-documents s3://zeerostock-productionucts');
     console.log('');
 
     const created = await createBucket(PRODUCTS_BUCKET);
@@ -348,7 +348,7 @@ async function reorganize() {
     console.log('This script will:');
     console.log('1. Move all files in zeerostock-assets to Assets/ folder');
     console.log('2. Copy Category Icons to zeerostock-assets');
-    console.log('3. Create zeerostock-products bucket (for product images)');
+    console.log('3. Create zeerostock-productionucts bucket (for product images)');
     console.log('=================================================\n');
 
     if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
@@ -386,15 +386,15 @@ async function reorganize() {
         console.log('\n1. Update .env file:');
         console.log('   AWS_ASSETS_BUCKET_NAME=zeerostock-assets');
         console.log('   AWS_VERIFICATION_BUCKET_NAME=zeerostock-verification-documents');
-        console.log('   AWS_PRODUCTS_BUCKET_NAME=zeerostock-products');
-        console.log('\n2. Migrate product images to zeerostock-products bucket:');
+        console.log('   AWS_PRODUCTS_BUCKET_NAME=zeerostock-productionucts');
+        console.log('\n2. Migrate product images to zeerostock-productionucts bucket:');
         console.log('   - Use AWS Console or CLI to copy product images');
         console.log('   - Or keep them in zeerostock-documents and just rename the bucket');
         console.log('\n3. Update frontend code with new URLs from:');
         console.log('   scripts/reorganized-asset-urls.json');
         console.log('\n4. Update next.config.ts domains:');
         console.log('   - zeerostock-assets.s3.ap-south-1.amazonaws.com');
-        console.log('   - zeerostock-products.s3.ap-south-1.amazonaws.com');
+        console.log('   - zeerostock-productionucts.s3.ap-south-1.amazonaws.com');
         console.log('=================================================\n');
 
     } catch (error) {

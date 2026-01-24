@@ -9,7 +9,7 @@
     "dev": "nodemon src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "migrate:multi-role": "node scripts/run-multi-role-migration.js",
-    "deploy:prod": "eb deploy zeerostock-prod",
+    "deploy:prod": "eb deploy zeerostock-production",
     "deploy:staging": "eb deploy zeerostock-staging",
     "logs": "eb logs",
     "logs:stream": "eb logs --stream",
@@ -57,6 +57,7 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@aws-sdk/client-elastic-beanstalk": "^3.975.0",
     "nodemon": "^3.0.2"
   }
 }
