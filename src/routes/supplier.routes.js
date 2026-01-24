@@ -153,6 +153,52 @@ router.get('/payments', supplierController.getPayments);
 router.get('/invoices', supplierController.getInvoices);
 
 // ==========================================
+// PAYMENT METHODS ROUTES
+// ==========================================
+
+const paymentMethodsController = require('../controllers/paymentMethods.controller');
+const { addPaymentMethodSchema } = require('../validators/paymentMethods.validator');
+
+/**
+ * @route   GET /api/supplier/payment-methods
+ * @desc    Get all payment methods for the supplier
+ * @access  Private (Supplier)
+ */
+router.get('/payment-methods', paymentMethodsController.getPaymentMethods);
+
+/**
+ * @route   POST /api/supplier/payment-methods
+ * @desc    Add a new payment method
+ * @access  Private (Supplier)
+ */
+router.post(
+    '/payment-methods',
+    validate(addPaymentMethodSchema),
+    paymentMethodsController.addPaymentMethod
+);
+
+/**
+ * @route   PUT /api/supplier/payment-methods/:id/set-primary
+ * @desc    Set a payment method as primary
+ * @access  Private (Supplier)
+ */
+router.put('/payment-methods/:id/set-primary', paymentMethodsController.setPrimaryPaymentMethod);
+
+/**
+ * @route   DELETE /api/supplier/payment-methods/:id
+ * @desc    Delete a payment method
+ * @access  Private (Supplier)
+ */
+router.delete('/payment-methods/:id', paymentMethodsController.deletePaymentMethod);
+
+/**
+ * @route   POST /api/supplier/payment-methods/:id/verify
+ * @desc    Verify a payment method
+ * @access  Private (Supplier)
+ */
+router.post('/payment-methods/:id/verify', paymentMethodsController.verifyPaymentMethod);
+
+// ==========================================
 // RFQ ROUTES
 // ==========================================
 
