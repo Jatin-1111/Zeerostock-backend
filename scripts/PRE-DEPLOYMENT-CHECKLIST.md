@@ -18,7 +18,7 @@ Complete this checklist before deploying to AWS Elastic Beanstalk with Jenkins.
 - [ ] **S3 Buckets Configured**
   - [ ] `zeerostock-assets` bucket exists and is public
   - [ ] `zeerostock-verification-documents` bucket exists and is private
-  - [ ] `zeerostock-products` bucket exists (if using product images)
+  - [ ] `zeerostock-productionucts` bucket exists (if using product images)
   - [ ] Bucket policies allow EC2 role access
 
 - [ ] **RDS/Database Configured**
@@ -37,7 +37,7 @@ Complete this checklist before deploying to AWS Elastic Beanstalk with Jenkins.
 - [ ] **`.elasticbeanstalk/config.yml`**
   - [ ] Application name set to `zeerostock`
   - [ ] Default region set to `ap-south-1`
-  - [ ] Environment mappings include `zeerostock-prod` and `zeerostock-staging`
+  - [ ] Environment mappings include `zeerostock-production` and `zeerostock-staging`
 
 - [ ] **`.ebextensions/alb-https.config`**
   - [ ] SSL Certificate ARN replaced with actual value
@@ -68,16 +68,14 @@ Complete this checklist before deploying to AWS Elastic Beanstalk with Jenkins.
 ## Jenkins Setup Checklist
 
 ### Jenkins Credentials
+
 - [ ] `aws-credentials` (AWS Access Key + Secret Key)
   - [ ] Access key has EB, S3, and ACM permissions
   - [ ] Secret key is correct
-  
 - [ ] `acm-certificate-arn` (Secret text)
   - [ ] Contains full ARN: `arn:aws:acm:ap-south-1:ACCOUNT_ID:certificate/ID`
-  
 - [ ] `aws-region` (Secret text)
   - [ ] Set to `ap-south-1`
-  
 - [ ] `zeerostock-staging-env` (Secret file)
   - [ ] Contains complete staging `.env` file
   - [ ] All required variables present:
@@ -89,23 +87,25 @@ Complete this checklist before deploying to AWS Elastic Beanstalk with Jenkins.
     - [ ] `AWS_SECRET_ACCESS_KEY=...`
     - [ ] `AWS_REGION=ap-south-1`
     - [ ] `FRONTEND_URL=...`
-  
-- [ ] `zeerostock-production-env` (Secret file)
+- [ ] `zeerostock-productionuction-env` (Secret file)
   - [ ] Contains complete production `.env` file
   - [ ] All required variables present (same as staging but production values)
 
 ### Jenkins Plugins
+
 - [ ] AWS Elastic Beanstalk Plugin installed
 - [ ] NodeJS Plugin installed
 - [ ] Pipeline plugins installed
 - [ ] Git plugin installed
 
 ### Global Tools
+
 - [ ] Node.js 24.6.0 configured
   - [ ] Name: `NodeJS-24.6.0`
   - [ ] Version: `24.6.0`
 
 ### Jenkins Server
+
 - [ ] EB CLI installed: `pip install awsebcli`
 - [ ] AWS CLI installed: `pip install awscli`
 - [ ] Node.js 24.6.0 available
@@ -113,6 +113,7 @@ Complete this checklist before deploying to AWS Elastic Beanstalk with Jenkins.
 - [ ] Git installed
 
 ### Jenkins Job
+
 - [ ] Multibranch Pipeline job created
 - [ ] Git repository URL configured
 - [ ] Branch discovery configured
@@ -152,7 +153,7 @@ Complete this checklist before deploying to AWS Elastic Beanstalk with Jenkins.
 
 ## Environment Checklist (Production)
 
-- [ ] EB Environment `zeerostock-prod` created
+- [ ] EB Environment `zeerostock-production` created
   - [ ] Instance type: t3.medium or larger
   - [ ] Auto-scaling enabled
   - [ ] ALB configured
@@ -246,11 +247,11 @@ Complete this checklist before deploying to AWS Elastic Beanstalk with Jenkins.
 
 ---
 
-**Date Completed**: _______________
+**Date Completed**: ******\_\_\_******
 
-**Completed By**: _______________
+**Completed By**: ******\_\_\_******
 
-**Approved By**: _______________
+**Approved By**: ******\_\_\_******
 
 ---
 
@@ -264,4 +265,3 @@ _Use this space for any additional notes or configuration specifics:_
 
 
 ```
-

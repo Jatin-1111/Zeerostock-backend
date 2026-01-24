@@ -46,7 +46,7 @@ pipeline {
                     
                     // Set environment based on branch
                     if (env.GIT_BRANCH == 'main' || params.DEPLOY_ENV == 'production') {
-                        env.EB_ENV_NAME = 'zeerostock-prod'
+                        env.EB_ENV_NAME = 'zeerostock-production'
                         env.ENV_TYPE = 'production'
                     } else {
                         env.EB_ENV_NAME = 'zeerostock-staging'

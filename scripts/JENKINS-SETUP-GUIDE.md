@@ -20,7 +20,7 @@ This guide helps set up Jenkins for automated deployment to AWS Elastic Beanstal
   - Note down the Certificate ARN: `arn:aws:acm:ap-south-1:ACCOUNT_ID:certificate/CERTIFICATE_ID`
 - **EB Environments**:
   - `zeerostock-staging` (optional, can be created via Jenkins)
-  - `zeerostock-prod` (must exist)
+  - `zeerostock-production` (must exist)
 - **IAM Roles**:
   - `aws-elasticbeanstalk-ec2-role` (for EC2 instances)
   - `aws-elasticbeanstalk-service-role` (for EB service)
@@ -79,7 +79,7 @@ This guide helps set up Jenkins for automated deployment to AWS Elastic Beanstal
 
 1. Click **Add Credentials** → **Global**
 2. Kind: **Secret file**
-3. ID: `zeerostock-production-env`
+3. ID: `zeerostock-productionuction-env`
 4. File: Upload/paste `.env` file with production configuration
 5. Click **Create**
 
@@ -183,7 +183,7 @@ eb create zeerostock-staging \
    --envvars NODE_ENV=staging
 
 # Create production environment
-eb create zeerostock-prod \
+eb create zeerostock-production \
    --instance-type t3.medium \
    --scale 2 \
    --envvars NODE_ENV=production
@@ -287,8 +287,8 @@ openssl s_client -connect zeerostock-staging.elasticbeanstalk.com:443 -servernam
 1. Merge `develop` to `main` branch
 2. Jenkins automatically detects and builds
 3. Requires manual approval for production (optional)
-4. Deploys to `zeerostock-prod` environment
-5. Access at: `https://zeerostock-prod.elasticbeanstalk.com`
+4. Deploys to `zeerostock-production` environment
+5. Access at: `https://zeerostock-production.elasticbeanstalk.com`
 
 ## Environment Variable Management
 
