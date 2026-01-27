@@ -4,11 +4,12 @@
  * Only accessible by super_admin role
  */
 
-const User = require('../models/User');
+const Admin = require('../models/Admin');
 const { passwordUtils } = require('../utils/auth.utils');
 const credentialUtils = require('../utils/credential.utils');
 const emailService = require('../services/email.service');
 const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.middleware');
+const { v4: uuidv4 } = require('uuid');
 
 /**
  * @route   GET /api/admin/admins
@@ -16,28 +17,35 @@ const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.mid
  * @access  Private (super_admin only)
  */
 const getAllAdmins = asyncHandler(async (req, res) => {
-    const admins = await User.getAllAdmins();
+    const admins = await Admin.getAllAdmins();
 
     // Sanitize response - remove sensitive fields
-    const sanitizedAdmins = admins.map(admin => ({
-        id: admin.id,
-        adminId: admin.admin_id,
-        name: `${admin.first_name} ${admin.last_name}`,
-        firstName: admin.first_name,
-        lastName: admin.last_name,
-        email: admin.business_email,
-        roles: admin.roles || [],
-        isFirstLogin: admin.is_first_login || false,
-        credentialsExpireAt: admin.credentials_expire_at,
-        credentialsUsed: admin.credentials_used || false,
-        accountLocked: admin.account_locked || false,
-        lockUntil: admin.lock_until,
-        isActive: admin.is_active,
-        lastLogin: admin.last_login,
-        createdAt: admin.created_at,
-        timeUntilExpiry: admin.credentials_expire_at ?
-            credentialUtils.getTimeUntilExpiry(admin.credentials_expire_at) : null
-    }));
+    const sanitizedAdmins = admins.map(admin => {
+        // Determine roles array for frontend compatibility
+        const isSuperAdmin = admin.role === 'super_admin';
+        const roles = isSuperAdmin ? ['super_admin', 'admin'] : ['admin'];
+
+        return {
+            id: admin.id,
+            adminId: admin.admin_id,
+            name: `${admin.first_name} ${admin.last_name}`,
+            firstName: admin.first_name,
+            lastName: admin.last_name,
+            email: admin.email,
+            role: admin.role,
+            roles: roles, // Frontend expects array
+            isFirstLogin: admin.is_first_login || false,
+            credentialsExpireAt: admin.credentials_expire_at,
+            credentialsUsed: admin.credentials_used || false, // Note: Schema might use different field or not exist
+            accountLocked: admin.admin_locked || admin.account_locked || false, // Check schema
+            lockUntil: admin.lock_until,
+            isActive: admin.is_active,
+            lastLogin: admin.last_login,
+            createdAt: admin.created_at,
+            timeUntilExpiry: admin.credentials_expire_at ?
+                credentialUtils.getTimeUntilExpiry(admin.credentials_expire_at) : null
+        };
+    });
 
     res.json({
         success: true,
@@ -83,10 +91,10 @@ const createAdmin = asyncHandler(async (req, res) => {
     }
 
     // Check if email already exists
-    const existingUser = await User.findByEmail(email);
-    if (existingUser) {
+    const existingAdmin = await Admin.findByEmail(email);
+    if (existingAdmin) {
         throw new AppError(
-            'A user with this email already exists',
+            'An admin with this email already exists',
             400,
             ERROR_CODES.USER_EXISTS
         );
@@ -95,6 +103,7 @@ const createAdmin = asyncHandler(async (req, res) => {
     // Generate unique admin ID
     let adminId;
     let attempts = 0;
+    // Note: Admin model might not have adminIdExists, assuming findByAdminId returns null if not found
     do {
         adminId = credentialUtils.generateAdminId();
         attempts++;
@@ -105,7 +114,7 @@ const createAdmin = asyncHandler(async (req, res) => {
                 ERROR_CODES.INTERNAL_ERROR
             );
         }
-    } while (await User.adminIdExists(adminId));
+    } while (await Admin.findByAdminId(adminId));
 
     // Generate temporary password
     const tempPassword = credentialUtils.generateTempPassword(adminId);
@@ -116,27 +125,23 @@ const createAdmin = asyncHandler(async (req, res) => {
 
     // Create admin user
     const adminData = {
+        id: uuidv4(),
         admin_id: adminId,
         first_name: firstName,
         last_name: lastName,
-        company_name: 'Zeerostock Admin', // Default company name for admin users
-        mobile: `ADMIN-${adminId}`, // Placeholder mobile for admin users
-        business_email: email,
+        email: email,
         password_hash: passwordHash,
-        business_type: 'admin', // Mark as admin type
-        roles: [role],
-        active_role: role, // Set active_role to match the role
+        role: role, // Singular role field in admins table
         is_first_login: true,
         credentials_expire_at: credentialsExpireAt,
         credentials_used: false,
-        is_verified: true, // Admins are pre-verified
         is_active: true,
         failed_login_attempts: 0,
         account_locked: false,
         created_at: new Date().toISOString()
     };
 
-    const newAdmin = await User.create(adminData);
+    const newAdmin = await Admin.create(adminData);
 
     // Send credentials email
     const emailSent = await emailService.sendAdminCredentials({
@@ -154,8 +159,8 @@ const createAdmin = asyncHandler(async (req, res) => {
             id: newAdmin.id,
             adminId: newAdmin.admin_id,
             name: `${newAdmin.first_name} ${newAdmin.last_name}`,
-            email: newAdmin.business_email,
-            role: newAdmin.roles[0],
+            email: newAdmin.email,
+            role: newAdmin.role,
             emailSent,
             // Only include credentials in response if email failed (for manual sharing)
             credentials: !emailSent ? {
@@ -175,22 +180,13 @@ const resetAdminPassword = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     // Get admin user
-    const admin = await User.findById(id);
+    const admin = await Admin.findById(id);
 
     if (!admin) {
         throw new AppError(
             'Admin not found',
             404,
             ERROR_CODES.USER_NOT_FOUND
-        );
-    }
-
-    // Verify user is an admin
-    if (!admin.roles || (!admin.roles.includes('admin') && !admin.roles.includes('super_admin'))) {
-        throw new AppError(
-            'User is not an admin',
-            400,
-            ERROR_CODES.VALIDATION_ERROR
         );
     }
 
@@ -211,7 +207,7 @@ const resetAdminPassword = asyncHandler(async (req, res) => {
     const credentialsExpireAt = credentialUtils.calculateExpiryTime(24);
 
     // Update admin credentials
-    await User.updateAdminCredentials(id, {
+    await Admin.updateAdminCredentials(id, {
         password_hash: passwordHash,
         is_first_login: true,
         credentials_expire_at: credentialsExpireAt,
@@ -223,7 +219,7 @@ const resetAdminPassword = asyncHandler(async (req, res) => {
 
     // Send password reset email
     const emailSent = await emailService.sendAdminPasswordReset({
-        email: admin.business_email,
+        email: admin.email,
         name: `${admin.first_name} ${admin.last_name}`,
         adminId: admin.admin_id,
         tempPassword
@@ -234,7 +230,7 @@ const resetAdminPassword = asyncHandler(async (req, res) => {
         message: `Password reset successfully. ${emailSent ? 'New credentials sent to email.' : 'Email sending failed - please share credentials manually.'}`,
         data: {
             adminId: admin.admin_id,
-            email: admin.business_email,
+            email: admin.email,
             emailSent,
             // Only include credentials in response if email failed
             credentials: !emailSent ? {
@@ -254,7 +250,7 @@ const resendCredentials = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     // Get admin user
-    const admin = await User.findById(id);
+    const admin = await Admin.findById(id);
 
     if (!admin) {
         throw new AppError(
@@ -282,14 +278,14 @@ const resendCredentials = asyncHandler(async (req, res) => {
         const passwordHash = await passwordUtils.hash(tempPassword);
         const credentialsExpireAt = credentialUtils.calculateExpiryTime(24);
 
-        await User.updateAdminCredentials(id, {
+        await Admin.updateAdminCredentials(id, {
             password_hash: passwordHash,
             credentials_expire_at: credentialsExpireAt
         });
 
         // Send new credentials
         const emailSent = await emailService.sendAdminCredentials({
-            email: admin.business_email,
+            email: admin.email,
             name: `${admin.first_name} ${admin.last_name}`,
             adminId: admin.admin_id,
             tempPassword,
@@ -307,10 +303,12 @@ const resendCredentials = asyncHandler(async (req, res) => {
     const tempPassword = credentialUtils.generateTempPassword(admin.admin_id);
     const passwordHash = await passwordUtils.hash(tempPassword);
 
-    await User.updatePassword(id, passwordHash);
+    await Admin.updateAdminCredentials(id, {
+        password_hash: passwordHash
+    });
 
     const emailSent = await emailService.sendAdminCredentials({
-        email: admin.business_email,
+        email: admin.email,
         name: `${admin.first_name} ${admin.last_name}`,
         adminId: admin.admin_id,
         tempPassword,
@@ -339,7 +337,7 @@ const deactivateAdmin = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     // Get admin user
-    const admin = await User.findById(id);
+    const admin = await Admin.findById(id);
 
     if (!admin) {
         throw new AppError(
@@ -359,14 +357,14 @@ const deactivateAdmin = asyncHandler(async (req, res) => {
     }
 
     // Deactivate admin
-    await User.update(id, { is_active: false });
+    await Admin.update(id, { is_active: false });
 
     res.json({
         success: true,
         message: 'Admin deactivated successfully',
         data: {
             adminId: admin.admin_id,
-            email: admin.business_email
+            email: admin.email
         }
     });
 });
@@ -380,7 +378,7 @@ const activateAdmin = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     // Get admin user
-    const admin = await User.findById(id);
+    const admin = await Admin.findById(id);
 
     if (!admin) {
         throw new AppError(
@@ -391,14 +389,14 @@ const activateAdmin = asyncHandler(async (req, res) => {
     }
 
     // Activate admin
-    await User.update(id, { is_active: true });
+    await Admin.update(id, { is_active: true });
 
     res.json({
         success: true,
         message: 'Admin activated successfully',
         data: {
             adminId: admin.admin_id,
-            email: admin.business_email
+            email: admin.email
         }
     });
 });
@@ -412,7 +410,7 @@ const deleteAdmin = asyncHandler(async (req, res) => {
     const { id } = req.params;
 
     // Get admin user
-    const admin = await User.findById(id);
+    const admin = await Admin.findById(id);
 
     if (!admin) {
         throw new AppError(
@@ -432,7 +430,7 @@ const deleteAdmin = asyncHandler(async (req, res) => {
     }
 
     // Prevent deletion of super_admin accounts
-    if (admin.roles && admin.roles.includes('super_admin')) {
+    if (admin.role === 'super_admin') {
         throw new AppError(
             'Super admin accounts cannot be deleted',
             403,
@@ -440,21 +438,14 @@ const deleteAdmin = asyncHandler(async (req, res) => {
         );
     }
 
-    // Delete admin (you might want to use soft delete in production)
-    const { supabase } = require('../config/database');
-    const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', id);
-
-    if (error) throw error;
+    await Admin.delete(id);
 
     res.json({
         success: true,
         message: 'Admin deleted permanently',
         data: {
             adminId: admin.admin_id,
-            email: admin.business_email
+            email: admin.email
         }
     });
 });

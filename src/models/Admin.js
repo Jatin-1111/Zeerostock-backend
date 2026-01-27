@@ -140,6 +140,32 @@ const Admin = {
         if (error) throw error;
         return data;
     },
+
+    /**
+     * Get all admin users
+     */
+    async getAllAdmins() {
+        const { data, error } = await supabase
+            .from('admins')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data || [];
+    },
+
+    /**
+     * Delete admin by ID
+     */
+    async delete(id) {
+        const { error } = await supabase
+            .from('admins')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        return true;
+    }
 };
 
 module.exports = Admin;
