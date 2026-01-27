@@ -5,6 +5,7 @@
 
 const Admin = require('../models/Admin');
 const RefreshToken = require('../models/RefreshToken');
+const AdminRefreshToken = require('../models/AdminRefreshToken');
 const { passwordUtils, jwtUtils } = require('../utils/auth.utils');
 const credentialUtils = require('../utils/credential.utils');
 const { redisHelpers } = require('../config/redis');
@@ -161,7 +162,7 @@ const adminLogin = asyncHandler(async (req, res) => {
 
     // Store refresh token
     const refreshTokenExpiry = jwtUtils.getExpiryTime(process.env.JWT_REFRESH_EXPIRY || '7d');
-    await RefreshToken.create(admin.id, refreshToken, refreshTokenExpiry.toISOString());
+    await AdminRefreshToken.create(admin.id, refreshToken, refreshTokenExpiry.toISOString());
     await redisHelpers.storeRefreshToken(admin.id, refreshToken, 7 * 24 * 60 * 60);
 
     res.json({
@@ -260,8 +261,7 @@ const changeAdminPassword = asyncHandler(async (req, res) => {
         password_hash: newPasswordHash,
         is_first_login: false,
         credentials_used: true,
-        credentials_expire_at: null,
-        last_password_change: new Date().toISOString()
+        credentials_expire_at: null
     });
 
     // Determine admin role
@@ -280,7 +280,7 @@ const changeAdminPassword = asyncHandler(async (req, res) => {
 
     // Store refresh token
     const refreshTokenExpiry = jwtUtils.getExpiryTime(process.env.JWT_REFRESH_EXPIRY || '7d');
-    await RefreshToken.create(admin.id, refreshToken, refreshTokenExpiry.toISOString());
+    await AdminRefreshToken.create(admin.id, refreshToken, refreshTokenExpiry.toISOString());
     await redisHelpers.storeRefreshToken(admin.id, refreshToken, 7 * 24 * 60 * 60);
 
     res.json({

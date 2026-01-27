@@ -37,7 +37,7 @@ const getAllAdmins = asyncHandler(async (req, res) => {
             isFirstLogin: admin.is_first_login || false,
             credentialsExpireAt: admin.credentials_expire_at,
             credentialsUsed: admin.credentials_used || false, // Note: Schema might use different field or not exist
-            accountLocked: admin.admin_locked || admin.account_locked || false, // Check schema
+            accountLocked: admin.account_locked || false,
             lockUntil: admin.lock_until,
             isActive: admin.is_active,
             lastLogin: admin.last_login,
