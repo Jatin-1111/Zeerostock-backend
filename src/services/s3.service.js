@@ -119,6 +119,18 @@ class S3Service {
     }
 
     /**
+     * Generate public URL for permanent access
+     * @param {string} fileKey - S3 object key
+     * @param {string} bucket - Bucket name
+     * @returns {string} Public URL
+     */
+    getPublicUrl(fileKey, bucket = null) {
+        const bucketName = bucket || this.bucketName;
+        const region = process.env.AWS_REGION;
+        return `https://${bucketName}.s3.${region}.amazonaws.com/${fileKey}`;
+    }
+
+    /**
      * Extract file key from S3 URL
      * @param {string} url - S3 URL
      * @returns {string|null} File key or null if invalid

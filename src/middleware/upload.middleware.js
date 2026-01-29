@@ -32,15 +32,17 @@ const s3Client = new S3Client({
  * This runs during upload and can access req.user and req.body
  */
 const getS3Folder = (req, file) => {
+    const url = req.originalUrl || req.url;
+
     // For verification documents: verification-documents/{userId}/{documentType}
-    if (req.baseUrl?.includes('verification') || req.body?.documentType) {
+    if (url?.includes('verification') || req.body?.documentType) {
         const userId = req.user?.id || 'anonymous';
         const documentType = req.body?.documentType || 'general';
         return `verification-documents/${userId}/${documentType}`;
     }
 
     // For product images: products/{userId}
-    if (req.baseUrl?.includes('listings') || req.baseUrl?.includes('products')) {
+    if (url?.includes('listings') || url?.includes('products')) {
         const userId = req.user?.id || 'anonymous';
         return `products/${userId}`;
     }
@@ -55,9 +57,11 @@ const imageUploadConfig = multer({
         s3: s3Client,
         bucket: (req, file, cb) => {
             // Dynamic bucket selection based on upload type
-            if (req.baseUrl?.includes('verification')) {
+            const url = req.originalUrl || req.url;
+
+            if (url?.includes('verification')) {
                 cb(null, process.env.AWS_VERIFICATION_BUCKET_NAME);
-            } else if (req.baseUrl?.includes('products') || req.baseUrl?.includes('listings')) {
+            } else if (url?.includes('products') || url?.includes('listings')) {
                 cb(null, process.env.AWS_PRODUCTS_BUCKET_NAME);
             } else {
                 cb(null, process.env.AWS_ASSETS_BUCKET_NAME);

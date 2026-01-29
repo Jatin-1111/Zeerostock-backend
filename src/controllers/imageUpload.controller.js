@@ -19,11 +19,21 @@ const uploadImages = asyncHandler(async (req, res) => {
     // Process each uploaded file
     for (const file of req.files) {
         try {
-            // Generate presigned URL for secure access (optional)
-            const presignedUrl = await s3Service.getPresignedUrl(file.key, 7 * 24 * 60 * 60, file.bucket); // 7 days
+            // Generate URL based on bucket type
+            let fileUrl;
+
+            // For products and assets, use public URL
+            // For verification documents, keep using presigned URL for security
+            if (file.bucket === process.env.AWS_VERIFICATION_BUCKET_NAME) {
+                const presigned = await s3Service.getPresignedUrl(file.key, 7 * 24 * 60 * 60, file.bucket);
+                fileUrl = presigned.url;
+            } else {
+                // Use permanent public URL for products and other assets
+                fileUrl = s3Service.getPublicUrl(file.key, file.bucket);
+            }
 
             uploadedImages.push({
-                url: presignedUrl.url, // Presigned URL for secure access
+                url: fileUrl,
                 fileKey: file.key, // S3 key for future operations
                 originalName: file.originalname,
                 size: file.size,
@@ -31,7 +41,6 @@ const uploadImages = asyncHandler(async (req, res) => {
             });
         } catch (error) {
             console.error(`Error processing ${file.originalname}:`, error);
-            // File is already in S3, just log the error for presigned URL generation
         }
     }
 
