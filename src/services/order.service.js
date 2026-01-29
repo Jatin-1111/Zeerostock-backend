@@ -121,10 +121,14 @@ class OrderService {
 
     /**
      * Validate product availability and stock
+     * Auto-removes expired products from cart
      * @param {Array} cartItems - Cart items to validate
-     * @returns {Promise<void>}
+     * @param {string} userId - User ID for cart updates
+     * @returns {Promise<Object>} - Validation result with removed items
      */
-    static async validateProductsAvailability(cartItems) {
+    static async validateProductsAvailability(cartItems, userId) {
+        const removedItems = [];
+
         for (const item of cartItems) {
             const product = await Product.findById(item.productId);
 
@@ -142,9 +146,17 @@ class OrderService {
 
             // Check if product has expired (for time-sensitive listings)
             if (product.expires_at && new Date(product.expires_at) < new Date()) {
-                throw new Error(`PRODUCT_EXPIRED: ${item.title}`);
+                // Auto-remove expired product from cart
+                await Cart.removeItem(userId, item.productId);
+                removedItems.push({
+                    productId: item.productId,
+                    title: item.title,
+                    reason: 'expired'
+                });
             }
         }
+
+        return { removedItems };
     }
 
     /**
@@ -217,8 +229,14 @@ class OrderService {
                 userId
             );
 
-            // 2. Validate product availability
-            await this.validateProductsAvailability(cartItems);
+            // 2. Validate product availability and auto-remove expired items
+            const { removedItems } = await this.validateProductsAvailability(cartItems, userId);
+
+            // If items were removed, re-fetch cart and throw error with details
+            if (removedItems.length > 0) {
+                const expiredTitles = removedItems.map(item => item.title).join(', ');
+                throw new Error(`PRODUCTS_EXPIRED_AND_REMOVED: ${expiredTitles}`);
+            }
 
             // 3. Validate addresses
             const addresses = await this.validateAddresses(

@@ -394,7 +394,8 @@ const createOrder = async (req, res) => {
             'PRODUCT_NOT_FOUND': 'One or more products in your cart are no longer available.',
             'PRODUCT_NOT_AVAILABLE': 'One or more products in your cart are currently unavailable.',
             'INSUFFICIENT_STOCK': 'Insufficient stock for one or more products. Please update quantities.',
-            'PRODUCT_EXPIRED': 'One or more products in your cart have expired and are no longer available.'
+            'PRODUCT_EXPIRED': 'One or more products in your cart have expired and are no longer available.',
+            'PRODUCTS_EXPIRED_AND_REMOVED': 'Some expired products were automatically removed from your cart. Please review your cart and try again.'
         };
 
         const errorCode = error.message.split(':')[0];
