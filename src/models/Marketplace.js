@@ -90,7 +90,12 @@ class Marketplace {
 
             // Text search
             if (q) {
-                query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
+                // Use Full Text Search with the new 'text_search_vector' column
+                // 'websearch' type handles operators like "quotes" and -negation
+                query = query.textSearch('text_search_vector', q, {
+                    type: 'websearch',
+                    config: 'english'
+                });
             }
 
             // Apply sorting
@@ -304,25 +309,25 @@ class Marketplace {
                 { label: 'Above 75%', min: 75, max: null }
             ];
 
-            // Get counts for conditions and listing types
-            const { data: conditionCounts } = await supabase
-                .from('products')
-                .select('condition')
-                .eq('status', 'active');
-
-            const { data: typeCounts } = await supabase
-                .from('products')
-                .select('listing_type')
-                .eq('status', 'active');
-
-            // Update counts
-            conditions.forEach(c => {
-                c.count = (conditionCounts || []).filter(p => p.condition === c.value).length;
-            });
-
-            listingTypes.forEach(t => {
-                t.count = (typeCounts || []).filter(p => p.listing_type === t.value).length;
-            });
+            // Update counts using efficient count queries instead of fetching all rows
+            await Promise.all([
+                ...conditions.map(async (c) => {
+                    const { count } = await supabase
+                        .from('products')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('status', 'active')
+                        .eq('condition', c.value);
+                    c.count = count || 0;
+                }),
+                ...listingTypes.map(async (t) => {
+                    const { count } = await supabase
+                        .from('products')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('status', 'active')
+                        .eq('listing_type', t.value);
+                    t.count = count || 0;
+                })
+            ]);
 
             return {
                 categories: categories || [],
@@ -396,6 +401,36 @@ class Marketplace {
                 featuredDeals: 0,
                 verifiedSuppliers: 0
             };
+        }
+    }
+
+    /**
+     * Get marketplace overview data (products + filters + stats)
+     * @param {Object} filters
+     * @returns {Promise<Object>}
+     */
+    static async getOverview(filters = {}) {
+        try {
+            const [productsData, filterOptions, stats] = await Promise.all([
+                this.getProducts({ ...filters, limit: 20 }),
+                this.getFilterOptions(),
+                this.getStats()
+            ]);
+
+            return {
+                products: productsData.products,
+                pagination: {
+                    total: productsData.total,
+                    totalPages: productsData.totalPages,
+                    page: 1,
+                    limit: 20
+                },
+                filters: filterOptions,
+                stats
+            };
+        } catch (error) {
+            console.error('Error in Marketplace.getOverview:', error);
+            throw error;
         }
     }
 }

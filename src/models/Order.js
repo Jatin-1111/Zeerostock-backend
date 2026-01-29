@@ -351,26 +351,50 @@ class Order {
      * @returns {Promise<Object>}
      */
     static async getAdminStats() {
-        const { data, error } = await supabase
-            .from('orders')
-            .select('id, status, total_amount, created_at');
+        // Run parallel queries efficiently
+        const [
+            { count: totalOrders },
+            { count: pending },
+            { count: processing },
+            { count: shipped },
+            { count: inTransit },
+            { count: delivered },
+            { count: cancelled },
+            { count: deliveryIssues },
+            { data: revenueData }
+        ] = await Promise.all([
+            supabase.from('orders').select('*', { count: 'exact', head: true }),
+            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'processing'),
+            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'shipped'),
+            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'in_transit'),
+            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'delivered'),
+            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'cancelled'),
+            supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'issue'),
+            // For revenue, we ideally want a SUM query, but Supabase JS doesn't support aggregate functions directly without RPC.
+            // fetching only total_amount is lighter than fetching everything.
+            supabase.from('orders').select('total_amount')
+        ]);
 
-        if (error) throw error;
+        // Calculate derived stats
+        const pendingDispatch = (pending || 0) + (await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'confirmed').then(res => res.count || 0));
 
-        const stats = {
-            totalOrders: data.length,
-            pending: data.filter(o => o.status === 'pending').length,
-            processing: data.filter(o => o.status === 'processing').length,
-            shipped: data.filter(o => o.status === 'shipped').length,
-            inTransit: data.filter(o => o.status === 'in_transit').length,
-            delivered: data.filter(o => o.status === 'delivered').length,
-            cancelled: data.filter(o => o.status === 'cancelled').length,
-            pendingDispatch: data.filter(o => ['pending', 'confirmed'].includes(o.status)).length,
-            deliveryIssues: data.filter(o => o.status === 'issue').length,
-            totalRevenue: data.reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0)
+        // Calculate revenue in memory (still requires fetching amounts, but payload is just one column)
+        // If optimizing further, we should create a 'get_total_revenue' RPC function in the database.
+        const totalRevenue = (revenueData || []).reduce((sum, o) => sum + parseFloat(o.total_amount || 0), 0);
+
+        return {
+            totalOrders: totalOrders || 0,
+            pending: pending || 0,
+            processing: processing || 0,
+            shipped: shipped || 0,
+            inTransit: inTransit || 0,
+            delivered: delivered || 0,
+            cancelled: cancelled || 0,
+            pendingDispatch: pendingDispatch || 0,
+            deliveryIssues: deliveryIssues || 0,
+            totalRevenue
         };
-
-        return stats;
     }
 
     /**

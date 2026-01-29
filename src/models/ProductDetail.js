@@ -36,38 +36,41 @@ class ProductDetail {
       if (error) throw error;
       if (!product) return null;
 
-      // Get specifications (using product.id for subsequent queries)
-      const specs = await this.getSpecifications(product.id);
+      // Fire and forget view increment
+      this.incrementViews(product.id).catch(console.error);
 
-      // Get seller info
-      const seller = await this.getSellerInfo(product.supplier_id);
+      // Prepare promises for parallel execution
+      const promises = [];
 
-      // Get review stats
-      const reviewStats = await this.getReviewStats(product.id);
-
-      // Get auction details if applicable
-      let auction = null;
+      // Add conditional promises
       if (product.listing_type === 'auction') {
-        auction = await this.getAuctionDetails(product.id);
+        promises.push(this.getAuctionDetails(product.id));
+      } else {
+        promises.push(Promise.resolve(null));
       }
 
-      // Check if user is watching
-      let isWatching = false;
       if (userId) {
-        isWatching = await this.isWatching(product.id, userId);
+        promises.push(this.isWatching(product.id, userId));
+      } else {
+        promises.push(Promise.resolve(false));
       }
 
-      // Track view
-      await this.incrementViews(product.id);
+      // Execute all queries in parallel
+      const [auction, isWatching] = await Promise.all(promises);
 
       // Transform product data to match frontend expectations
       const transformedProduct = this.transformProductData(product);
 
       return {
         product: transformedProduct,
-        specifications: specs,
-        seller,
-        reviewStats,
+        specifications: {}, // Fetched lazily
+        seller: null,       // Fetched lazily
+        reviewStats: {      // Fetched lazily
+          avgRating: 0,
+          totalReviews: 0,
+          distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+          verifiedPurchases: 0
+        },
         auction,
         isWatching
       };

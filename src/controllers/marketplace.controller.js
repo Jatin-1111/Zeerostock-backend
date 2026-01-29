@@ -290,6 +290,37 @@ const getFilters = asyncHandler(async (req, res) => {
     });
 });
 
+/**
+ * @route   GET /api/marketplace/overview
+ * @desc    Get comprehensive marketplace overview (products, filters, stats)
+ * @access  Public
+ */
+const getOverview = asyncHandler(async (req, res) => {
+    const filters = req.validatedQuery || {};
+    const result = await Marketplace.getOverview(filters);
+
+    // Format products
+    const formattedProducts = result.products.map(formatMarketplaceProduct);
+
+    res.json({
+        success: true,
+        message: 'Marketplace overview retrieved successfully',
+        data: {
+            products: formattedProducts,
+            pagination: {
+                total: result.pagination.total,
+                page: result.pagination.page,
+                limit: result.pagination.limit,
+                totalPages: result.pagination.totalPages,
+                hasNextPage: result.pagination.page < result.pagination.totalPages,
+                hasPrevPage: result.pagination.page > 1
+            },
+            filters: result.filters,
+            stats: result.stats
+        }
+    });
+});
+
 module.exports = {
     getProducts,
     getCategories,
@@ -297,5 +328,6 @@ module.exports = {
     getFeaturedDeals,
     getSponsored,
     getTrending,
-    getFilters
+    getFilters,
+    getOverview
 };

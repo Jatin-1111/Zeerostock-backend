@@ -138,4 +138,16 @@ router.get(
     marketplaceController.getFilters
 );
 
+/**
+ * @route   GET /api/marketplace/overview
+ * @desc    Get aggregated marketplace data (products, filters, stats)
+ * @access  Public
+ * @params  Same as /products endpoint
+ */
+router.get(
+    '/overview',
+    validateQuery(marketplaceValidation.products),
+    marketplaceController.getOverview
+);
+
 module.exports = router;
