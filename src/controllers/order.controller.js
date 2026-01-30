@@ -503,12 +503,12 @@ const createOrder = async (req, res) => {
                     try {
                         const { data: supplier, error: supplierError } = await supabase
                             .from('users')
-                            .select('email, business_email, company_name')
+                            .select('business_email, company_name')
                             .eq('id', supplierId)
                             .single();
 
-                        if (!supplierError && supplier) {
-                            const supplierEmail = supplier.business_email || supplier.email;
+                        if (!supplierError && supplier && supplier.business_email) {
+                            const supplierEmail = supplier.business_email;
                             const supplierData = supplierMap[supplierId];
 
                             console.log(`📧 Sending notification to supplier: ${supplierEmail}`);
@@ -525,6 +525,8 @@ const createOrder = async (req, res) => {
                             console.log(`✅ Supplier notification sent to ${supplierEmail}`);
                         } else if (supplierError) {
                             console.error(`⚠️  Error fetching supplier ${supplierId}:`, supplierError);
+                        } else {
+                            console.warn(`⚠️  No email found for supplier ${supplierId}`);
                         }
                     } catch (supplierEmailError) {
                         console.error(`❌ Error sending supplier notification for ${supplierId}:`, supplierEmailError);
