@@ -1016,6 +1016,10 @@ Zeerostock Team
   async sendNewOrderToSupplier(email, orderData) {
     const { supplierName, orderNumber, buyerCompany, items, totalAmount, shippingAddress } = orderData;
 
+    console.log(`📧 Attempting to send new order notification to supplier: ${email}`);
+    console.log(`   Supplier Name: ${supplierName}`);
+    console.log(`   Order Number: ${orderNumber}`);
+
     const itemsHtml = items.map(item => `
       <tr>
         <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">${item.name}</td>
@@ -1099,10 +1103,15 @@ Zeerostock Team
     };
 
     try {
-      await transporter.sendMail(mailOptions);
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`✅ New order notification sent to supplier successfully`);
+      console.log(`   Message ID: ${info.messageId}`);
       return true;
     } catch (error) {
-      console.error('Email send error:', error);
+      console.error(`❌ Email send error for supplier notification:`, error);
+      console.error(`   To: ${email}`);
+      console.error(`   Error Code: ${error.code}`);
+      console.error(`   Error Message: ${error.message}`);
       return false;
     }
   },

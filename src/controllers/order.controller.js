@@ -445,8 +445,59 @@ const createOrder = async (req, res) => {
             });
 
             console.log(`📧 Email send result: ${emailResult ? 'SUCCESS' : 'FAILED'}`);
+
+            // Send order notification email to suppliers
+            console.log(`📧 Sending supplier notifications...`);
+            if (orderItems && orderItems.length > 0) {
+                // Group items by supplier
+                const supplierMap = {};
+                orderItems.forEach(item => {
+                    const supplierId = item.supplier_id;
+                    if (!supplierMap[supplierId]) {
+                        supplierMap[supplierId] = {
+                            supplierName: item.supplier_name,
+                            supplierEmail: null,
+                            items: []
+                        };
+                    }
+                    supplierMap[supplierId].items.push({
+                        name: item.product_title,
+                        quantity: item.quantity,
+                        price: item.unit_price
+                    });
+                });
+
+                // Fetch supplier emails and send notifications
+                for (const supplierId in supplierMap) {
+                    try {
+                        const { data: supplier, error: supplierError } = await supabase
+                            .from('users')
+                            .select('email, business_email')
+                            .eq('id', supplierId)
+                            .single();
+
+                        if (!supplierError && supplier) {
+                            const supplierEmail = supplier.business_email || supplier.email;
+                            const supplierData = supplierMap[supplierId];
+
+                            await emailService.sendNewOrderToSupplier(supplierEmail, {
+                                supplierName: supplierData.supplierName,
+                                orderNumber: order.orderNumber,
+                                buyerCompany: req.user.company_name || 'Buyer',
+                                items: supplierData.items,
+                                totalAmount: order.totalAmount || fullOrder?.total_amount,
+                                shippingAddress: fullOrder?.shipping_address
+                            });
+
+                            console.log(`📧 Supplier notification sent to ${supplierEmail}`);
+                        }
+                    } catch (supplierEmailError) {
+                        console.error(`❌ Error sending supplier notification for ${supplierId}:`, supplierEmailError);
+                    }
+                }
+            }
         } catch (emailError) {
-            console.error('❌ Error sending order confirmation email:', emailError);
+            console.error('❌ Error sending order emails:', emailError);
             console.error('   Stack:', emailError.stack);
             // Don't fail the request if email fails
         }
