@@ -1,6 +1,8 @@
 const SupplierVerification = require('../models/SupplierVerification');
 const User = require('../models/User');
 const Order = require('../models/Order');
+const RFQ = require('../models/RFQ');
+const { supabase } = require('../config/database');
 const emailService = require('../services/email.service');
 const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.middleware');
 const {
@@ -550,6 +552,288 @@ const getVerificationDocument = asyncHandler(async (req, res) => {
     }
 });
 
+/**
+ * RFQ MANAGEMENT - For market demand analysis
+ */
+
+/**
+ * @route   GET /api/admin/rfqs/stats
+ * @desc    Get RFQ statistics by industry/category for demand analysis (lightweight aggregates only)
+ * @access  Private (Admin only)
+ */
+const getRFQStats = asyncHandler(async (req, res) => {
+    // Get overall counts using single lightweight query
+    const { data: stats, error: statsError } = await supabase
+        .from('rfqs')
+        .select('status', { count: 'exact' });
+
+    if (statsError) throw statsError;
+
+    const overall = {
+        total: stats?.length || 0,
+        active: stats?.filter(r => r.status === 'active').length || 0,
+        closed: stats?.filter(r => r.status === 'closed').length || 0,
+        expired: stats?.filter(r => r.status === 'expired').length || 0
+    };
+
+    // Get aggregated stats by industry/category WITHOUT fetching all RFQs
+    const { data: rfqStats, error: aggregateError } = await supabase
+        .from('rfqs')
+        .select('industry_id, category_id, quantity');
+
+    if (aggregateError) throw aggregateError;
+
+    // Aggregate in-memory
+    const grouped = {};
+    for (const rfq of rfqStats || []) {
+        const key = `${rfq.industry_id || 'null'}_${rfq.category_id || 'null'}`;
+        if (!grouped[key]) {
+            grouped[key] = {
+                industryId: rfq.industry_id,
+                categoryId: rfq.category_id,
+                totalRFQs: 0,
+                quantities: []
+            };
+        }
+        grouped[key].totalRFQs++;
+        grouped[key].quantities.push(parseFloat(rfq.quantity || 0));
+    }
+
+    // Fetch only the industry and category names (small static data)
+    const { data: allIndustries } = await supabase
+        .from('industries')
+        .select('id, name');
+
+    const { data: allCategories } = await supabase
+        .from('categories')
+        .select('id, name');
+
+    const industriesMap = Object.fromEntries((allIndustries || []).map(i => [i.id, i]));
+    const categoriesMap = Object.fromEntries((allCategories || []).map(c => [c.id, c]));
+
+    // Build response with minimal data
+    const byIndustry = Object.values(grouped).map(item => {
+        const avgQuantity = item.quantities.length > 0
+            ? item.quantities.reduce((a, b) => a + b, 0) / item.quantities.length
+            : 0;
+        const totalQuantity = item.quantities.reduce((a, b) => a + b, 0);
+
+        return {
+            industryId: item.industryId,
+            categoryId: item.categoryId,
+            totalRFQs: item.totalRFQs,
+            avgQuantity,
+            totalQuantity,
+            industryName: industriesMap[item.industryId]?.name || 'Unknown',
+            categoryName: categoriesMap[item.categoryId]?.name || 'Unknown'
+        };
+    });
+
+    res.json({
+        success: true,
+        data: {
+            byIndustry: byIndustry.sort((a, b) => b.totalRFQs - a.totalRFQs),
+            overall
+        }
+    });
+});
+
+/**
+ * @route   GET /api/admin/rfqs
+ * @desc    Get all RFQs with filters for demand analysis
+ * @access  Private (Admin only)
+ */
+const getAllRFQs = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 20, status, industryId, categoryId, sortBy = 'created_at', sortOrder = 'desc' } = req.query;
+    const offset = (page - 1) * limit;
+
+    // Map camelCase to snake_case for database columns
+    const columnMapping = {
+        'createdAt': 'created_at',
+        'created_at': 'created_at',
+        'updatedAt': 'updated_at',
+        'updated_at': 'updated_at',
+        'rfqNumber': 'rfq_number',
+        'rfq_number': 'rfq_number'
+    };
+
+    const dbSortBy = columnMapping[sortBy] || 'created_at';
+
+    // Return MINIMAL data in list view - only what's needed for table display
+    // No descriptions, budgets, or buyer details in list (reduce payload)
+    let query = supabase
+        .from('rfqs')
+        .select(`
+            id,
+            rfq_number,
+            buyer_id,
+            title,
+            category_id,
+            industry_id,
+            quantity,
+            unit,
+            status,
+            created_at
+        `, { count: 'exact' });
+
+    if (status) query = query.eq('status', status);
+    if (industryId) query = query.eq('industry_id', industryId);
+    if (categoryId) query = query.eq('category_id', categoryId);
+
+    query = query
+        .order(dbSortBy, { ascending: sortOrder.toLowerCase() === 'asc' })
+        .range(offset, offset + parseInt(limit) - 1);
+
+    const { data: rfqs, error, count } = await query;
+
+    if (error) throw error;
+
+    // Fetch only industry and category names in bulk (not buyer data)
+    const { data: allIndustries } = await supabase
+        .from('industries')
+        .select('id, name');
+
+    const { data: allCategories } = await supabase
+        .from('categories')
+        .select('id, name');
+
+    const industriesMap = Object.fromEntries((allIndustries || []).map(i => [i.id, i]));
+    const categoriesMap = Object.fromEntries((allCategories || []).map(c => [c.id, c]));
+
+    // Transform to minimal response
+    const enrichedRfqs = (rfqs || []).map(rfq => ({
+        id: rfq.id,
+        rfqNumber: rfq.rfq_number,
+        buyerId: rfq.buyer_id,
+        title: rfq.title,
+        categoryId: rfq.category_id,
+        industryId: rfq.industry_id,
+        quantity: parseFloat(rfq.quantity),
+        unit: rfq.unit,
+        status: rfq.status,
+        createdAt: rfq.created_at,
+        // Lightweight references - no nested buyer object
+        industryName: industriesMap[rfq.industry_id]?.name || 'Unknown',
+        categoryName: categoriesMap[rfq.category_id]?.name || 'Unknown'
+    }));
+
+    res.json({
+        success: true,
+        data: {
+            rfqs: enrichedRfqs,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: count,
+                totalPages: Math.ceil(count / limit)
+            }
+        }
+    });
+});
+
+/**
+ * @route   GET /api/admin/rfqs/:id
+ * @desc    Get RFQ details for demand analysis
+ * @access  Private (Admin only)
+ */
+const getRFQDetails = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const { data: rfq, error } = await supabase
+        .from('rfqs')
+        .select(`
+            id,
+            rfq_number,
+            buyer_id,
+            title,
+            description:detailed_requirements,
+            category_id,
+            industry_id,
+            quantity,
+            unit,
+            budget_min,
+            budget_max,
+            delivery_location:preferred_location,
+            delivery_date:required_by_date,
+            status,
+            created_at,
+            updated_at
+        `)
+        .eq('id', id)
+        .single();
+
+    if (error || !rfq) {
+        throw new AppError('RFQ not found', 404, ERROR_CODES.NOT_FOUND);
+    }
+
+    // Fetch buyer details
+    let buyer = null;
+    if (rfq.buyer_id) {
+        const { data: buyerData } = await supabase
+            .from('users')
+            .select('id, first_name, last_name, business_email, company_name, mobile')
+            .eq('id', rfq.buyer_id)
+            .single();
+        buyer = buyerData ? {
+            id: buyerData.id,
+            firstName: buyerData.first_name,
+            lastName: buyerData.last_name,
+            businessEmail: buyerData.business_email,
+            companyName: buyerData.company_name,
+            mobile: buyerData.mobile
+        } : null;
+    }
+
+    // Fetch industry details
+    let industry = null;
+    if (rfq.industry_id) {
+        const { data: ind } = await supabase
+            .from('industries')
+            .select('id, name')
+            .eq('id', rfq.industry_id)
+            .single();
+        industry = ind;
+    }
+
+    // Fetch category details
+    let category = null;
+    if (rfq.category_id) {
+        const { data: cat } = await supabase
+            .from('categories')
+            .select('id, name')
+            .eq('id', rfq.category_id)
+            .single();
+        category = cat;
+    }
+
+    const enrichedRfq = {
+        id: rfq.id,
+        rfqNumber: rfq.rfq_number,
+        buyerId: rfq.buyer_id,
+        title: rfq.title,
+        description: rfq.description,
+        categoryId: rfq.category_id,
+        industryId: rfq.industry_id,
+        quantity: parseFloat(rfq.quantity),
+        unit: rfq.unit,
+        budgetMin: rfq.budget_min ? parseFloat(rfq.budget_min) : null,
+        budgetMax: rfq.budget_max ? parseFloat(rfq.budget_max) : null,
+        deliveryLocation: rfq.delivery_location,
+        deliveryDate: rfq.delivery_date,
+        status: rfq.status,
+        createdAt: rfq.created_at,
+        updatedAt: rfq.updated_at,
+        buyer,
+        industry,
+        category
+    };
+
+    res.json({
+        success: true,
+        data: enrichedRfq
+    });
+});
+
 module.exports = {
     getPendingVerifications,
     getVerificationDetails,
@@ -564,5 +848,9 @@ module.exports = {
     getOrderDetails,
     updateOrderStatus,
     // Document management
-    getVerificationDocument
+    getVerificationDocument,
+    // RFQ management
+    getRFQStats,
+    getAllRFQs,
+    getRFQDetails
 };

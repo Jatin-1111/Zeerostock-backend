@@ -13,7 +13,10 @@ const {
     getAllOrders,
     getOrderDetails,
     updateOrderStatus,
-    getVerificationDocument
+    getVerificationDocument,
+    getRFQStats,
+    getAllRFQs,
+    getRFQDetails
 } = require('../controllers/admin.controller');
 
 // Middleware to check admin role
@@ -162,5 +165,30 @@ router.get('/orders/:orderId', getOrderDetails);
  * @access  Private (Admin only)
  */
 router.put('/orders/:orderId/status', updateOrderStatus);
+
+/**
+ * RFQ MANAGEMENT ROUTES - For market demand analysis
+ */
+
+/**
+ * @route   GET /api/admin/rfqs/stats
+ * @desc    Get RFQ statistics by industry/category
+ * @access  Private (Admin only)
+ */
+router.get('/rfqs/stats', getRFQStats);
+
+/**
+ * @route   GET /api/admin/rfqs
+ * @desc    Get all RFQs with filters
+ * @access  Private (Admin only)
+ */
+router.get('/rfqs', getAllRFQs);
+
+/**
+ * @route   GET /api/admin/rfqs/:id
+ * @desc    Get RFQ details
+ * @access  Private (Admin only)
+ */
+router.get('/rfqs/:id', getRFQDetails);
 
 module.exports = router;

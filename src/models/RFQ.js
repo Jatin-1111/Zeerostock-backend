@@ -162,11 +162,29 @@ const RFQ = sequelize.define('RFQ', {
 });
 
 // Associations
+// NOTE: Industry and Category models use Supabase, not Sequelize
+// So we handle those joins manually in queries instead of associations
 RFQ.associate = (models) => {
     RFQ.hasMany(models.Quote, {
         foreignKey: 'rfqId',
         as: 'quotes'
     });
+
+    // Commented out to prevent crashes - User/Industry/Category use Supabase
+    // RFQ.belongsTo(models.User, {
+    //     foreignKey: 'buyerId',
+    //     as: 'buyer'
+    // });
+
+    // RFQ.belongsTo(models.Industry, {
+    //     foreignKey: 'industryId',
+    //     as: 'industry'
+    // });
+
+    // RFQ.belongsTo(models.Category, {
+    //     foreignKey: 'categoryId',
+    //     as: 'category'
+    // });
 };
 
 module.exports = RFQ;

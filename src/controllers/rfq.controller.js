@@ -576,21 +576,30 @@ exports.getRFQStats = async (req, res) => {
     try {
         const buyerId = req.user.id;
 
-        const [active, closed, expired, totalQuotes] = await Promise.all([
+        const [active, closed, expired, fulfilled, totalQuotes] = await Promise.all([
             RFQ.count({ where: { buyerId, status: 'active' } }),
             RFQ.count({ where: { buyerId, status: 'closed' } }),
             RFQ.count({ where: { buyerId, status: 'expired' } }),
+            RFQ.count({ where: { buyerId, status: 'fulfilled' } }),
             RFQ.sum('quoteCount', { where: { buyerId } })
         ]);
+
+        const totalRFQs = (active || 0) + (closed || 0) + (expired || 0) + (fulfilled || 0);
+        const avgQuotesPerRFQ = totalRFQs > 0 ? Math.round((totalQuotes || 0) / totalRFQs * 10) / 10 : 0;
+
+        // Calculate average response time (simplified - would need quote timestamps for accuracy)
+        const avgResponseTime = 0; // TODO: Calculate from quote response times when data available
 
         res.json({
             success: true,
             data: {
+                totalRFQs,
                 activeRFQs: active || 0,
                 closedRFQs: closed || 0,
                 expiredRFQs: expired || 0,
-                totalRFQs: (active || 0) + (closed || 0) + (expired || 0),
-                totalQuotesReceived: totalQuotes || 0
+                fulfilledRFQs: fulfilled || 0,
+                avgQuotesPerRFQ,
+                avgResponseTime
             }
         });
     } catch (error) {
