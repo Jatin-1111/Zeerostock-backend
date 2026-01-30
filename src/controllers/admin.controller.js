@@ -206,6 +206,20 @@ const markUnderReview = asyncHandler(async (req, res) => {
         notes || 'Verification is now under review'
     );
 
+    // Send supplier under review notification email (non-blocking)
+    try {
+        const supplier = await User.findByPk(verification.supplier_id);
+        if (supplier && supplier.business_email) {
+            await emailService.sendSupplierUnderReview(supplier.business_email || supplier.email, {
+                fullName: `${supplier.first_name} ${supplier.last_name}`,
+                businessName: supplier.company_name
+            });
+        }
+    } catch (emailError) {
+        console.error('Error sending under review email:', emailError);
+        // Don't fail the request if email fails
+    }
+
     res.json({
         success: true,
         message: 'Marked as under review',

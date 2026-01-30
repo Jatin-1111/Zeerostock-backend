@@ -3,6 +3,7 @@ const Quote = require('../models/Quote');
 const Category = require('../models/Category');
 const Industry = require('../models/Industry');
 const User = require('../models/User');
+const emailService = require('../services/email.service');
 const { Op } = require('sequelize');
 
 /**
@@ -81,6 +82,24 @@ exports.createRFQ = async (req, res) => {
                 id: industry.id,
                 name: industry.name
             };
+        }
+
+        // Send RFQ posted confirmation email to buyer (non-blocking)
+        try {
+            const buyer = await User.findByPk(buyerId);
+            if (buyer && buyer.business_email) {
+                await emailService.sendRFQPostedConfirmation(buyer.business_email || buyer.email, {
+                    buyerName: `${buyer.first_name} ${buyer.last_name}`,
+                    rfqNumber: rfqNumber,
+                    title: title,
+                    quantity: quantity,
+                    unit: unit,
+                    expiresAt: expiryDate
+                });
+            }
+        } catch (emailError) {
+            console.error('Error sending RFQ confirmation email:', emailError);
+            // Don't fail the request if email fails
         }
 
         res.status(201).json({

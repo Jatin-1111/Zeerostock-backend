@@ -2,6 +2,7 @@ const Order = require('../models/Order');
 const OrderItem = require('../models/OrderItem');
 const NotificationService = require('../services/notification.service');
 const OrderService = require('../services/order.service');
+const emailService = require('../services/email.service');
 const PDFDocument = require('pdfkit');
 const xlsx = require('xlsx');
 const fs = require('fs');
@@ -275,6 +276,24 @@ const cancelOrder = async (req, res) => {
         // Send notification
         await NotificationService.sendOrderCancelled(userId, cancelledOrder);
 
+        // Send order cancellation email (non-blocking)
+        try {
+            const userEmail = req.user.business_email || req.user.email;
+            const buyerName = `${req.user.first_name} ${req.user.last_name}`;
+
+            await emailService.sendOrderCancelled(userEmail, {
+                orderNumber: cancelledOrder.order_number,
+                buyerName: buyerName,
+                cancellationReason: reason,
+                refundAmount: cancelledOrder.total_amount,
+                refundMethod: cancelledOrder.payment_method || 'Original Payment Method',
+                refundTimeline: '5-7 business days'
+            });
+        } catch (emailError) {
+            console.error('Error sending order cancellation email:', emailError);
+            // Don't fail the request if email fails
+        }
+
         res.json({
             success: true,
             message: 'Order cancelled successfully',
@@ -370,6 +389,38 @@ const createOrder = async (req, res) => {
 
         // Create order using OrderService
         const order = await OrderService.createOrder(orderData);
+        console.log(`✅ Order created successfully: ${order.orderNumber}`);
+
+        // Send order confirmation email (non-blocking)
+        try {
+            const userEmail = req.user.business_email || req.user.email;
+            const buyerName = `${req.user.first_name} ${req.user.last_name}`;
+            
+            console.log(`📧 Preparing to send order confirmation email...`);
+            console.log(`   User Email: ${userEmail}`);
+            console.log(`   User ID: ${req.user.id}`);
+            console.log(`   Buyer Name: ${buyerName}`);
+
+            const emailResult = await emailService.sendOrderConfirmation(userEmail, {
+                orderNumber: order.orderNumber,
+                buyerName: buyerName,
+                items: order.items.map(item => ({
+                    name: item.product_title,
+                    quantity: item.quantity,
+                    price: item.price,
+                    totalPrice: item.total_price
+                })),
+                totalAmount: order.total_amount,
+                paymentMethod: paymentMethod,
+                shippingAddress: order.shipping_address,
+                estimatedDelivery: order.estimated_delivery
+            });
+            
+            console.log(`📧 Email send result: ${emailResult ? 'SUCCESS' : 'FAILED'}`);
+        } catch (emailError) {
+            console.error('❌ Error sending order confirmation email:', emailError);
+            // Don't fail the request if email fails
+        }
 
         res.status(201).json({
             success: true,

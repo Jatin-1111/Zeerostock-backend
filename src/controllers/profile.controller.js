@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const UserRole = require('../models/UserRole');
+const emailService = require('../services/email.service');
 const { sanitizeUtils } = require('../utils/auth.utils');
 const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.middleware');
 
@@ -65,6 +66,27 @@ const updateProfile = asyncHandler(async (req, res) => {
     // Update user
     const updatedUser = await User.update(req.userId, updateData);
 
+    // Send profile updated email (non-blocking)
+    try {
+        const user = await User.findById(req.userId);
+        if (user && user.business_email) {
+            const updatedFieldsList = [];
+            if (firstName) updatedFieldsList.push('First Name');
+            if (lastName) updatedFieldsList.push('Last Name');
+            if (companyName) updatedFieldsList.push('Company Name');
+            if (mobile) updatedFieldsList.push('Mobile Number');
+            if (businessType) updatedFieldsList.push('Business Type');
+
+            await emailService.sendProfileUpdated(user.business_email || user.email, {
+                userName: `${user.first_name} ${user.last_name}`,
+                updatedFields: updatedFieldsList.length > 0 ? updatedFieldsList.join(', ') : 'Your profile information'
+            });
+        }
+    } catch (emailError) {
+        console.error('Error sending profile updated email:', emailError);
+        // Don't fail the request if email fails
+    }
+
     res.json({
         success: true,
         message: 'Profile updated successfully',
@@ -98,8 +120,26 @@ const addGST = asyncHandler(async (req, res) => {
 const setRole = asyncHandler(async (req, res) => {
     const { role } = req.validatedBody;
 
+    // Get current user first to send email with old role
+    const currentUser = await User.findById(req.userId);
+    const previousRole = currentUser.role || 'Guest';
+
     // Update role
     const updatedUser = await User.updateRole(req.userId, role);
+
+    // Send role switched email (non-blocking)
+    try {
+        if (currentUser && currentUser.business_email && previousRole !== role) {
+            await emailService.sendRoleSwitched(currentUser.business_email || currentUser.email, {
+                userName: `${currentUser.first_name} ${currentUser.last_name}`,
+                newRole: role.charAt(0).toUpperCase() + role.slice(1),
+                previousRole: previousRole.charAt(0).toUpperCase() + previousRole.slice(1)
+            });
+        }
+    } catch (emailError) {
+        console.error('Error sending role switched email:', emailError);
+        // Don't fail the request if email fails
+    }
 
     res.json({
         success: true,
@@ -114,8 +154,23 @@ const setRole = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const deactivateAccount = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.userId);
+
     // Deactivate user (soft delete)
     await User.update(req.userId, { is_active: false });
+
+    // Send account deactivation email (non-blocking)
+    try {
+        if (user && user.business_email) {
+            await emailService.sendAccountDeactivated(user.business_email || user.email, {
+                userName: `${user.first_name} ${user.last_name}`,
+                reactivationLink: `${process.env.FRONTEND_URL}/auth/reactivate`
+            });
+        }
+    } catch (emailError) {
+        console.error('Error sending account deactivation email:', emailError);
+        // Don't fail the request if email fails
+    }
 
     res.json({
         success: true,

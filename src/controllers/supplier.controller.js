@@ -1271,7 +1271,7 @@ const submitQuote = asyncHandler(async (req, res) => {
     const details = await db(detailsQuery, [rfq.buyerId, supplierId]);
 
     if (details.rows.length > 0) {
-        const { buyer_email, buyer_name, supplier_name, supplier_company } = details.rows[0];
+        const { buyer_email, buyer_name, supplier_name, supplier_company, supplier_email } = details.rows[0];
 
         // Send email notification to buyer
         const emailService = require('../services/email.service');
@@ -1300,6 +1300,21 @@ const submitQuote = asyncHandler(async (req, res) => {
             });
         } catch (emailError) {
             console.error('Error sending quote notification email:', emailError);
+            // Don't fail the request if email fails
+        }
+
+        // Send quote submission confirmation to supplier (non-blocking)
+        try {
+            await emailService.sendQuoteSubmittedConfirmation(supplier_email, {
+                supplierName: supplier_name,
+                quoteNumber: quoteNumber,
+                rfqTitle: rfq.title,
+                quotePrice: parseFloat(quotePrice),
+                deliveryDays: deliveryDays,
+                validUntil: validUntil
+            });
+        } catch (emailError) {
+            console.error('Error sending quote confirmation email to supplier:', emailError);
             // Don't fail the request if email fails
         }
     }

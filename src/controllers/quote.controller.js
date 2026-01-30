@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 const OrderItem = require('../models/OrderItem');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const emailService = require('../services/email.service');
 const { Op } = require('sequelize');
 const { supabase } = require('../config/database');
 
@@ -345,6 +346,27 @@ exports.acceptQuote = async (req, res) => {
             // Don't fail the request if notification fails
         }
 
+        // Send quote accepted email to supplier (non-blocking)
+        try {
+            const supplier = await User.findByPk(quote.supplierId);
+            const buyer = await User.findByPk(buyerId);
+
+            if (supplier && supplier.business_email) {
+                await emailService.sendQuoteAccepted(supplier.business_email || supplier.email, {
+                    supplierName: `${supplier.first_name} ${supplier.last_name}`,
+                    quoteNumber: quote.quoteNumber,
+                    rfqTitle: quote.rfq.title,
+                    buyerCompany: buyer.company_name || `${buyer.first_name} ${buyer.last_name}`,
+                    quotePrice: quote.quotePrice,
+                    orderCreated: createOrder,
+                    orderNumber: order?.order_number
+                });
+            }
+        } catch (emailError) {
+            console.error('Error sending quote accepted email:', emailError);
+            // Don't fail the request if email fails
+        }
+
         res.json({
             success: true,
             message: 'Quote accepted successfully',
@@ -417,6 +439,25 @@ exports.rejectQuote = async (req, res) => {
             message: `Your quote ${quote.quoteNumber} has been rejected`,
             data: { quoteId: quote.id, reason }
         });
+
+        // Send quote rejected email to supplier (non-blocking)
+        try {
+            const supplier = await User.findByPk(quote.supplierId);
+            const buyer = await User.findByPk(buyerId);
+
+            if (supplier && supplier.business_email) {
+                await emailService.sendQuoteRejected(supplier.business_email || supplier.email, {
+                    supplierName: `${supplier.first_name} ${supplier.last_name}`,
+                    quoteNumber: quote.quoteNumber,
+                    rfqTitle: quote.rfq.title,
+                    buyerCompany: buyer.company_name || `${buyer.first_name} ${buyer.last_name}`,
+                    rejectionReason: reason
+                });
+            }
+        } catch (emailError) {
+            console.error('Error sending quote rejected email:', emailError);
+            // Don't fail the request if email fails
+        }
 
         res.json({
             success: true,
