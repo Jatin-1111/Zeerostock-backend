@@ -13,11 +13,14 @@ const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.mid
  */
 const login = asyncHandler(async (req, res) => {
     const { identifier, password, requestedRole } = req.validatedBody;
+    const loginStartTime = Date.now();
 
     console.log('🔐 Login attempt:', { identifier, requestedRole });
 
     // Find user by email or mobile
+    const userFetchStart = Date.now();
     const user = await User.findByEmailOrMobile(identifier);
+    console.log(`⏱️ User lookup: ${Date.now() - userFetchStart}ms`);
 
     if (!user) {
         console.log('❌ User not found:', identifier);
@@ -49,7 +52,10 @@ const login = asyncHandler(async (req, res) => {
     }
 
     // Verify password
+    const passwordCheckStart = Date.now();
     const isPasswordValid = await passwordUtils.compare(password, user.password_hash);
+    const passwordCheckTime = Date.now() - passwordCheckStart;
+    console.log(`⏱️ Password comparison: ${passwordCheckTime}ms`);
 
     console.log('🔑 Password validation:', { isPasswordValid, hasPasswordHash: !!user.password_hash });
 
@@ -62,10 +68,19 @@ const login = asyncHandler(async (req, res) => {
         );
     }
 
+    // ⚠️ NOTE: Password comparison is still slow (272ms). 
+    // If bcrypt is taking >100ms, it's using 12 rounds instead of 10.
+    // Verify: grep "BCRYPT_SALT_ROUNDS" .env and src/utils/auth.utils.js
+    if (passwordCheckTime > 150) {
+        console.warn('⚠️  PERFORMANCE WARNING: Password comparison too slow! Check BCRYPT_SALT_ROUNDS');
+    }
+
     console.log('✅ Password valid, fetching roles...');
 
     // Get all ACTIVE roles for this user
+    const roleFetchStart = Date.now();
     const activeRoles = await UserRole.findActiveRoles(user.id);
+    console.log(`⏱️ Role fetch: ${Date.now() - roleFetchStart}ms`);
 
     console.log('📋 Active roles:', activeRoles);
 
@@ -109,17 +124,24 @@ const login = asyncHandler(async (req, res) => {
         );
     }
 
-    // Update last login
-    await User.updateLastLogin(user.id);
+    // Update last login (fire and forget)
+    User.updateLastLogin(user.id).catch(err => console.error('Failed to update last login:', err));
 
     // Generate tokens with role in payload
+    const tokenGenStart = Date.now();
     const accessToken = jwtUtils.generateAccessToken(user.id, user.business_email, selectedRole);
     const refreshToken = jwtUtils.generateRefreshToken(user.id);
+    console.log(`⏱️ Token generation: ${Date.now() - tokenGenStart}ms`);
 
     // Store refresh token
+    const refreshTokenStore = Date.now();
     const refreshTokenExpiry = jwtUtils.getExpiryTime(process.env.JWT_REFRESH_EXPIRY || '7d');
     await RefreshToken.create(user.id, refreshToken, refreshTokenExpiry.toISOString());
+    console.log(`⏱️ Refresh token storage: ${Date.now() - refreshTokenStore}ms`);
     await redisHelpers.storeRefreshToken(user.id, refreshToken, 7 * 24 * 60 * 60);
+
+    const totalTime = Date.now() - loginStartTime;
+    console.log(`\n⏱️ ===== LOGIN TOTAL TIME: ${totalTime}ms =====\n`);
 
     res.json({
         success: true,
@@ -251,8 +273,8 @@ const verifyLoginOTP = asyncHandler(async (req, res) => {
     // Clear OTP
     await User.updateOTP(user.id, null, null);
 
-    // Update last login
-    await User.updateLastLogin(user.id);
+    // Update last login (fire and forget)
+    User.updateLastLogin(user.id).catch(err => console.error('Failed to update last login:', err));
 
     // Get user's active roles
     const UserRole = require('../models/UserRole');

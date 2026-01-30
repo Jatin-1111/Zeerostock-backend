@@ -152,7 +152,7 @@ const verifyOTP = asyncHandler(async (req, res) => {
 
     // Mark user as verified
     const verifiedUser = await User.markAsVerified(user.id);
-    await User.updateLastLogin(user.id);
+    User.updateLastLogin(user.id).catch(err => console.error('Failed to update last login:', err));
 
     // Activate buyer role after email verification
     await UserRole.updateStatus(user.id, 'buyer', {

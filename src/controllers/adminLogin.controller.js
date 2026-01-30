@@ -137,8 +137,8 @@ const adminLogin = asyncHandler(async (req, res) => {
         });
     }
 
-    // Update last login
-    await Admin.updateLastLogin(admin.id);
+    // Update last login (fire and forget)
+    Admin.updateLastLogin(admin.id).catch(err => console.error('Failed to update admin last login:', err));
 
     // Determine admin role (could be admin or super_admin)
     const adminRole = admin.role;

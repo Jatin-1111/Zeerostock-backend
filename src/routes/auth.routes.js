@@ -11,13 +11,12 @@ const profileController = require('../controllers/profile.controller');
 // Middleware
 const { verifyToken, verifyUserVerified } = require('../middleware/auth.middleware');
 const { validate, authValidation } = require('../validators/auth.validator');
-// Rate limiters disabled for testing
-// const {
-//     authLimiter,
-//     signupLimiter,
-//     otpLimiter,
-//     resetPasswordLimiter
-// } = require('../middleware/rateLimiter.middleware');
+const {
+    authLimiter,
+    signupLimiter,
+    otpLimiter,
+    resetPasswordLimiter
+} = require('../middleware/rateLimiter.middleware');
 
 /**
  * @swagger
@@ -29,6 +28,7 @@ const { validate, authValidation } = require('../validators/auth.validator');
  */
 router.post(
     '/signup',
+    signupLimiter,
     validate(authValidation.signup),
     signupController.signup
 );
@@ -43,6 +43,7 @@ router.post(
  */
 router.post(
     '/verify-otp',
+    otpLimiter,
     validate(authValidation.verifyOTP),
     signupController.verifyOTP
 );
@@ -57,6 +58,7 @@ router.post(
  */
 router.post(
     '/resend-otp',
+    otpLimiter,
     validate(authValidation.resendOTP),
     signupController.resendOTP
 );
@@ -71,6 +73,7 @@ router.post(
  */
 router.post(
     '/login',
+    authLimiter,
     validate(authValidation.login),
     loginController.login
 );
@@ -85,6 +88,7 @@ router.post(
  */
 router.post(
     '/otp-login',
+    otpLimiter,
     validate(authValidation.otpLogin),
     loginController.sendLoginOTP
 );
@@ -99,6 +103,7 @@ router.post(
  */
 router.post(
     '/verify-login-otp',
+    otpLimiter,
     validate(authValidation.verifyLoginOTP),
     loginController.verifyLoginOTP
 );
@@ -168,6 +173,7 @@ router.post(
  */
 router.post(
     '/forgot-password',
+    resetPasswordLimiter,
     validate(authValidation.forgotPassword),
     passwordController.forgotPassword
 );
@@ -182,6 +188,7 @@ router.post(
  */
 router.post(
     '/reset-password',
+    resetPasswordLimiter,
     validate(authValidation.resetPassword),
     passwordController.resetPassword
 );

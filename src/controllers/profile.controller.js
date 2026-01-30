@@ -10,7 +10,8 @@ const { AppError, ERROR_CODES, asyncHandler } = require('../middleware/error.mid
  * @access  Private
  */
 const getProfile = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.userId);
+    // User already fetched and attached in verifyToken middleware
+    const user = req.user || await User.findById(req.userId);
 
     if (!user) {
         throw new AppError(

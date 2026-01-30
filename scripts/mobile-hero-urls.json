@@ -1,0 +1,38 @@
+[
+  {
+    "originalName": "Mobile About Us.png",
+    "normalizedName": "mobile-about-us.png",
+    "key": "Assets/Mobile/mobile-about-us.png",
+    "url": "https://zeerostock-assets.s3.ap-south-1.amazonaws.com/Assets/Mobile/mobile-about-us.png"
+  },
+  {
+    "originalName": "Mobile Agent.png",
+    "normalizedName": "mobile-agent.png",
+    "key": "Assets/Mobile/mobile-agent.png",
+    "url": "https://zeerostock-assets.s3.ap-south-1.amazonaws.com/Assets/Mobile/mobile-agent.png"
+  },
+  {
+    "originalName": "Mobile Buyer.png",
+    "normalizedName": "mobile-buyer.png",
+    "key": "Assets/Mobile/mobile-buyer.png",
+    "url": "https://zeerostock-assets.s3.ap-south-1.amazonaws.com/Assets/Mobile/mobile-buyer.png"
+  },
+  {
+    "originalName": "Mobile Home.png",
+    "normalizedName": "mobile-home.png",
+    "key": "Assets/Mobile/mobile-home.png",
+    "url": "https://zeerostock-assets.s3.ap-south-1.amazonaws.com/Assets/Mobile/mobile-home.png"
+  },
+  {
+    "originalName": "Mobile Landing page.png",
+    "normalizedName": "mobile-landing-page.png",
+    "key": "Assets/Mobile/mobile-landing-page.png",
+    "url": "https://zeerostock-assets.s3.ap-south-1.amazonaws.com/Assets/Mobile/mobile-landing-page.png"
+  },
+  {
+    "originalName": "Mobile Supplier.png",
+    "normalizedName": "mobile-supplier.png",
+    "key": "Assets/Mobile/mobile-supplier.png",
+    "url": "https://zeerostock-assets.s3.ap-south-1.amazonaws.com/Assets/Mobile/mobile-supplier.png"
+  }
+]
