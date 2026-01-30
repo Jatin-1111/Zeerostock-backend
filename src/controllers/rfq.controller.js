@@ -86,7 +86,7 @@ exports.createRFQ = async (req, res) => {
 
         // Send RFQ posted confirmation email to buyer (non-blocking)
         try {
-            const buyer = await User.findByPk(buyerId);
+            const buyer = await User.findById(buyerId);
             if (buyer && buyer.business_email) {
                 await emailService.sendRFQPostedConfirmation(buyer.business_email || buyer.email, {
                     buyerName: `${buyer.first_name} ${buyer.last_name}`,

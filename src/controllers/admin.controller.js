@@ -208,7 +208,7 @@ const markUnderReview = asyncHandler(async (req, res) => {
 
     // Send supplier under review notification email (non-blocking)
     try {
-        const supplier = await User.findByPk(verification.supplier_id);
+        const supplier = await User.findById(verification.supplier_id);
         if (supplier && supplier.business_email) {
             await emailService.sendSupplierUnderReview(supplier.business_email || supplier.email, {
                 fullName: `${supplier.first_name} ${supplier.last_name}`,

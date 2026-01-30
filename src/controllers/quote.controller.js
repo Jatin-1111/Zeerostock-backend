@@ -329,29 +329,34 @@ exports.acceptQuote = async (req, res) => {
             await quote.rfq.update({ status: 'fulfilled' }, { transaction });
         }
 
-        // Commit transaction before sending email (email is non-critical)
+        // Commit transaction before sending notification (notification is non-critical)
         await transaction.commit();
+
+        // Send notification to supplier (outside transaction - non-critical operation)
+        try {
+            await Notification.create({
+                user_id: quote.supplierId,
+                type: 'message_received',
+                title: 'Quote Accepted',
+                message: `Your quote ${quote.quoteNumber} has been accepted by the buyer`,
+                data: { quoteId: quote.id, orderId: order?.id }
+            });
+        } catch (notifError) {
+            console.error('Error sending notification:', notifError);
+            // Don't fail the request if notification fails
+        }
 
         // Send quote accepted email to supplier (non-blocking)
         try {
-            const { data: supplier } = await supabase
-                .from('users')
-                .select('first_name, last_name, business_email')
-                .eq('id', quote.supplierId)
-                .single();
-
-            const { data: buyer } = await supabase
-                .from('users')
-                .select('first_name, last_name, company_name')
-                .eq('id', buyerId)
-                .single();
+            const supplier = await User.findById(quote.supplierId);
+            const buyer = await User.findById(buyerId);
 
             if (supplier && supplier.business_email) {
-                await emailService.sendQuoteAccepted(supplier.business_email, {
+                await emailService.sendQuoteAccepted(supplier.business_email || supplier.email, {
                     supplierName: `${supplier.first_name} ${supplier.last_name}`,
                     quoteNumber: quote.quoteNumber,
                     rfqTitle: quote.rfq.title,
-                    buyerCompany: buyer?.company_name || `${buyer?.first_name} ${buyer?.last_name}`,
+                    buyerCompany: buyer.company_name || `${buyer.first_name} ${buyer.last_name}`,
                     quotePrice: quote.quotePrice,
                     orderCreated: createOrder,
                     orderNumber: order?.order_number
@@ -426,26 +431,26 @@ exports.rejectQuote = async (req, res) => {
             rejectionReason: reason
         });
 
+        // Send notification to supplier
+        await Notification.create({
+            user_id: quote.supplierId,
+            type: 'message_received',
+            title: 'Quote Rejected',
+            message: `Your quote ${quote.quoteNumber} has been rejected`,
+            data: { quoteId: quote.id, reason }
+        });
+
         // Send quote rejected email to supplier (non-blocking)
         try {
-            const { data: supplier } = await supabase
-                .from('users')
-                .select('first_name, last_name, business_email')
-                .eq('id', quote.supplierId)
-                .single();
-
-            const { data: buyer } = await supabase
-                .from('users')
-                .select('first_name, last_name, company_name')
-                .eq('id', buyerId)
-                .single();
+            const supplier = await User.findById(quote.supplierId);
+            const buyer = await User.findById(buyerId);
 
             if (supplier && supplier.business_email) {
-                await emailService.sendQuoteRejected(supplier.business_email, {
+                await emailService.sendQuoteRejected(supplier.business_email || supplier.email, {
                     supplierName: `${supplier.first_name} ${supplier.last_name}`,
                     quoteNumber: quote.quoteNumber,
                     rfqTitle: quote.rfq.title,
-                    buyerCompany: buyer?.company_name || `${buyer?.first_name} ${buyer?.last_name}`,
+                    buyerCompany: buyer.company_name || `${buyer.first_name} ${buyer.last_name}`,
                     rejectionReason: reason
                 });
             }
