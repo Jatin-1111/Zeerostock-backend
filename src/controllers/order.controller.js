@@ -395,30 +395,59 @@ const createOrder = async (req, res) => {
         try {
             const userEmail = req.user.business_email || req.user.email;
             const buyerName = `${req.user.first_name} ${req.user.last_name}`;
-            
+
             console.log(`📧 Preparing to send order confirmation email...`);
             console.log(`   User Email: ${userEmail}`);
             console.log(`   User ID: ${req.user.id}`);
             console.log(`   Buyer Name: ${buyerName}`);
 
+            // Fetch order items separately (OrderService doesn't return them)
+            const { data: orderItems, error: itemsError } = await supabase
+                .from('order_items')
+                .select('*')
+                .eq('order_id', order.orderId);
+
+            if (itemsError) {
+                console.error('Error fetching order items:', itemsError);
+            }
+
+            // Fetch full order data with address info
+            const { data: fullOrder, error: orderError } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('id', order.orderId)
+                .single();
+
+            if (orderError) {
+                console.error('Error fetching full order:', orderError);
+            }
+
             const emailResult = await emailService.sendOrderConfirmation(userEmail, {
                 orderNumber: order.orderNumber,
                 buyerName: buyerName,
-                items: order.items.map(item => ({
+                items: (orderItems || []).map(item => ({
                     name: item.product_title,
                     quantity: item.quantity,
-                    price: item.price,
-                    totalPrice: item.total_price
+                    price: item.unit_price,
+                    totalPrice: item.subtotal
                 })),
-                totalAmount: order.total_amount,
+                totalAmount: order.totalAmount || fullOrder?.total_amount,
                 paymentMethod: paymentMethod,
-                shippingAddress: order.shipping_address,
-                estimatedDelivery: order.estimated_delivery
+                shippingAddress: fullOrder?.shipping_address || {
+                    name: 'Shipping Address',
+                    address: 'N/A',
+                    city: 'N/A',
+                    state: 'N/A',
+                    pincode: 'N/A',
+                    phone: 'N/A'
+                },
+                estimatedDelivery: order.deliveryEta || fullOrder?.delivery_eta
             });
-            
+
             console.log(`📧 Email send result: ${emailResult ? 'SUCCESS' : 'FAILED'}`);
         } catch (emailError) {
             console.error('❌ Error sending order confirmation email:', emailError);
+            console.error('   Stack:', emailError.stack);
             // Don't fail the request if email fails
         }
 
