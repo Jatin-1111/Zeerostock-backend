@@ -24,6 +24,7 @@ const supplierVerificationRoutes = require('./routes/supplierVerification.routes
 const supplierRoutes = require('./routes/supplier.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
 const bugRoutes = require('./routes/bug.routes');
+const testRoutes = require('./routes/test.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -136,6 +137,7 @@ app.use('/api/supplier/verification', supplierVerificationRoutes);
 app.use('/api/supplier', supplierRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/bugs', bugRoutes);
+app.use('/api/test', testRoutes);
 
 // Health check endpoint for AWS Elastic Beanstalk
 app.get('/api/health', (req, res) => {

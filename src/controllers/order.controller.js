@@ -402,47 +402,75 @@ const createOrder = async (req, res) => {
             console.log(`   Buyer Name: ${buyerName}`);
 
             // Fetch order items separately (OrderService doesn't return them)
-            const { data: orderItems, error: itemsError } = await supabase
-                .from('order_items')
-                .select('*')
-                .eq('order_id', order.orderId);
+            let orderItems = [];
+            let fullOrder = null;
 
-            if (itemsError) {
-                console.error('Error fetching order items:', itemsError);
+            try {
+                const { data: items, error: itemsError } = await supabase
+                    .from('order_items')
+                    .select('*')
+                    .eq('order_id', order.orderId);
+
+                if (itemsError) {
+                    console.error('⚠️  Error fetching order items:', itemsError);
+                } else {
+                    orderItems = items || [];
+                    console.log(`✅ Fetched ${orderItems.length} order items`);
+                }
+            } catch (itemFetchError) {
+                console.error('⚠️  Exception fetching order items:', itemFetchError);
             }
 
             // Fetch full order data with address info
-            const { data: fullOrder, error: orderError } = await supabase
-                .from('orders')
-                .select('*')
-                .eq('id', order.orderId)
-                .single();
+            try {
+                const { data: orderData, error: orderError } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('id', order.orderId)
+                    .single();
 
-            if (orderError) {
-                console.error('Error fetching full order:', orderError);
+                if (orderError) {
+                    console.error('⚠️  Error fetching full order:', orderError);
+                } else {
+                    fullOrder = orderData;
+                    console.log(`✅ Fetched full order data`);
+                }
+            } catch (orderFetchError) {
+                console.error('⚠️  Exception fetching full order:', orderFetchError);
             }
 
-            const emailResult = await emailService.sendOrderConfirmation(userEmail, {
+            console.log(`📧 Order items: ${orderItems.length}, Full order: ${fullOrder ? 'yes' : 'no'}`);
+
+            // Build email data with fallbacks
+            const emailData = {
                 orderNumber: order.orderNumber,
                 buyerName: buyerName,
-                items: (orderItems || []).map(item => ({
-                    name: item.product_title,
-                    quantity: item.quantity,
-                    price: item.unit_price,
-                    totalPrice: item.subtotal
-                })),
-                totalAmount: order.totalAmount || fullOrder?.total_amount,
-                paymentMethod: paymentMethod,
+                items: (orderItems && orderItems.length > 0) ? orderItems.map(item => ({
+                    name: item.product_title || 'Product',
+                    quantity: item.quantity || 0,
+                    price: item.unit_price || 0,
+                    totalPrice: item.subtotal || 0
+                })) : [],
+                totalAmount: order.totalAmount || (fullOrder?.total_amount) || 0,
+                paymentMethod: paymentMethod || 'N/A',
                 shippingAddress: fullOrder?.shipping_address || {
-                    name: 'Shipping Address',
-                    address: 'N/A',
+                    name: buyerName,
+                    address: 'Shipping Address',
                     city: 'N/A',
                     state: 'N/A',
                     pincode: 'N/A',
-                    phone: 'N/A'
+                    phone: userEmail
                 },
-                estimatedDelivery: order.deliveryEta || fullOrder?.delivery_eta
+                estimatedDelivery: order.deliveryEta || (fullOrder?.delivery_eta) || 'TBD'
+            };
+
+            console.log(`📧 Sending email with data:`, {
+                orderNumber: emailData.orderNumber,
+                itemCount: emailData.items.length,
+                totalAmount: emailData.totalAmount
             });
+
+            const emailResult = await emailService.sendOrderConfirmation(userEmail, emailData);
 
             console.log(`📧 Email send result: ${emailResult ? 'SUCCESS' : 'FAILED'}`);
 
@@ -453,26 +481,29 @@ const createOrder = async (req, res) => {
                 const supplierMap = {};
                 orderItems.forEach(item => {
                     const supplierId = item.supplier_id;
-                    if (!supplierMap[supplierId]) {
+                    if (supplierId && !supplierMap[supplierId]) {
                         supplierMap[supplierId] = {
-                            supplierName: item.supplier_name,
-                            supplierEmail: null,
+                            supplierName: item.supplier_name || 'Supplier',
                             items: []
                         };
                     }
-                    supplierMap[supplierId].items.push({
-                        name: item.product_title,
-                        quantity: item.quantity,
-                        price: item.unit_price
-                    });
+                    if (supplierId) {
+                        supplierMap[supplierId].items.push({
+                            name: item.product_title || 'Product',
+                            quantity: item.quantity || 0,
+                            price: item.unit_price || 0
+                        });
+                    }
                 });
+
+                console.log(`📧 Found ${Object.keys(supplierMap).length} suppliers to notify`);
 
                 // Fetch supplier emails and send notifications
                 for (const supplierId in supplierMap) {
                     try {
                         const { data: supplier, error: supplierError } = await supabase
                             .from('users')
-                            .select('email, business_email')
+                            .select('email, business_email, company_name')
                             .eq('id', supplierId)
                             .single();
 
@@ -480,24 +511,30 @@ const createOrder = async (req, res) => {
                             const supplierEmail = supplier.business_email || supplier.email;
                             const supplierData = supplierMap[supplierId];
 
+                            console.log(`📧 Sending notification to supplier: ${supplierEmail}`);
+
                             await emailService.sendNewOrderToSupplier(supplierEmail, {
                                 supplierName: supplierData.supplierName,
                                 orderNumber: order.orderNumber,
                                 buyerCompany: req.user.company_name || 'Buyer',
                                 items: supplierData.items,
-                                totalAmount: order.totalAmount || fullOrder?.total_amount,
-                                shippingAddress: fullOrder?.shipping_address
+                                totalAmount: emailData.totalAmount,
+                                shippingAddress: emailData.shippingAddress
                             });
 
-                            console.log(`📧 Supplier notification sent to ${supplierEmail}`);
+                            console.log(`✅ Supplier notification sent to ${supplierEmail}`);
+                        } else if (supplierError) {
+                            console.error(`⚠️  Error fetching supplier ${supplierId}:`, supplierError);
                         }
                     } catch (supplierEmailError) {
                         console.error(`❌ Error sending supplier notification for ${supplierId}:`, supplierEmailError);
                     }
                 }
+            } else {
+                console.log(`⚠️  No order items found, skipping supplier notifications`);
             }
         } catch (emailError) {
-            console.error('❌ Error sending order emails:', emailError);
+            console.error('❌ Error in email sending process:', emailError);
             console.error('   Stack:', emailError.stack);
             // Don't fail the request if email fails
         }
